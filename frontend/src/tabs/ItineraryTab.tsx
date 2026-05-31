@@ -6,9 +6,9 @@ import { useAuth } from '../contexts/AuthContext'
 interface Item { id: string; date: string; time: string | null; title: string; info: string | null; order: number }
 
 const DAY_LABELS: Record<string, string> = {
-  '2026-06-16': 'Mon Jun 16 · Arrival Day 🚗',
-  '2026-06-17': 'Tue Jun 17 · Main Day 🏕',
-  '2026-06-18': 'Wed Jun 18 · Checkout Day 👋',
+  '2026-06-16': 'Mon Jun 16 · Arrival Day',
+  '2026-06-17': 'Tue Jun 17 · Main Day',
+  '2026-06-18': 'Wed Jun 18 · Checkout Day',
 }
 
 const DOT_COLORS = ['bg-primary', 'bg-secondary', 'bg-accent']
@@ -53,7 +53,7 @@ export default function ItineraryTab() {
     return acc
   }, {})
 
-  if (loading) return <div className="flex justify-center py-20 text-4xl animate-bounce">🗓</div>
+  if (loading) return <div className="flex justify-center py-20">Loading...</div>
 
   return (
     <div className="px-4 py-4">
@@ -104,7 +104,7 @@ export default function ItineraryTab() {
                   </div>
                   {isAdmin && (
                     <button onClick={() => deleteItem(item.id)}
-                      className="text-danger text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0">✕</button>
+                      className="text-danger text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0">x</button>
                   )}
                 </div>
               </div>

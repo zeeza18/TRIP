@@ -8,33 +8,28 @@ type Step = 1 | 2 | 3
 export default function Onboarding() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const inviteToken = params.get('token') || ''
+  const emailParam = params.get('email') || ''
 
   const [step, setStep] = useState<Step>(1)
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [idProof, setIdProof] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [booze, setBooze] = useState<'yay' | 'nah'>('yay')
   const [loading, setLoading] = useState(false)
 
-  // Pre-fill email from invite token
   useEffect(() => {
-    if (inviteToken) {
-      try {
-        const payload = JSON.parse(atob(inviteToken.split('.')[1]))
-        if (payload.sub) setEmail(payload.sub)
-      } catch {}
-    }
-  }, [inviteToken])
+    if (emailParam) setEmail(emailParam)
+  }, [emailParam])
 
   async function handleFinish() {
     if (password !== confirm) { toast.error('Passwords do not match'); return }
     if (password.length < 6) { toast.error('Password must be at least 6 characters'); return }
     setLoading(true)
     try {
-      await api.post('/auth/register', { email, password, name, phone, boozePref: booze, inviteToken })
+      await api.post('/auth/register', { email, password, name, phone, boozePref: booze, idProof })
       toast.success('Account created! Please log in.')
       navigate('/')
     } catch (err: any) {
@@ -63,7 +58,7 @@ export default function Onboarding() {
         <div className="bg-white rounded-2xl shadow-md p-6">
           {step === 1 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-dark">Hey! Who are you? 👋</h2>
+              <h2 className="text-lg font-semibold text-dark">Hey! Who are you?</h2>
               <div>
                 <label className="block text-xs font-medium text-dark mb-1">Full name</label>
                 <input
@@ -90,6 +85,14 @@ export default function Onboarding() {
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary"
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-dark mb-1">ID Proof <span className="text-muted font-normal">(optional — for check-in)</span></label>
+                <input
+                  value={idProof} onChange={e => setIdProof(e.target.value)}
+                  placeholder="e.g. Driver's License, Passport"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
               <button
                 onClick={() => { if (!name || !email) { toast.error('Name and email are required'); return } setStep(2) }}
                 className="w-full py-3 bg-primary text-white font-semibold rounded-xl hover:opacity-90 transition-all"
@@ -101,7 +104,7 @@ export default function Onboarding() {
 
           {step === 2 && (
             <div className="space-y-4">
-              <h2 className="text-lg font-semibold text-dark">Set your password 🔒</h2>
+              <h2 className="text-lg font-semibold text-dark">Set your password</h2>
               <div>
                 <label className="block text-xs font-medium text-dark mb-1">Password</label>
                 <input
@@ -132,20 +135,20 @@ export default function Onboarding() {
 
           {step === 3 && (
             <div className="space-y-5">
-              <h2 className="text-lg font-semibold text-dark">Next booz?? 🍺</h2>
+              <h2 className="text-lg font-semibold text-dark">Next: Booze preference</h2>
               <p className="text-sm text-muted">Let the crew know your vibe</p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setBooze('yay')}
                   className={`flex-1 py-5 rounded-2xl text-2xl font-bold border-2 transition-all ${booze === 'yay' ? 'border-primary bg-primary text-white scale-105' : 'border-gray-200 bg-white text-dark'}`}
                 >
-                  YAY 🍺
+                  YAY
                 </button>
                 <button
                   onClick={() => setBooze('nah')}
                   className={`flex-1 py-5 rounded-2xl text-2xl font-bold border-2 transition-all ${booze === 'nah' ? 'border-accent bg-accent text-white scale-105' : 'border-gray-200 bg-white text-dark'}`}
                 >
-                  NAH 🧃
+                  NAH
                 </button>
               </div>
               <div className="flex gap-3">
@@ -155,7 +158,7 @@ export default function Onboarding() {
                   disabled={loading}
                   className="flex-1 py-3 bg-primary text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-60"
                 >
-                  {loading ? 'Creating…' : "Let's go! 🎉"}
+                  {loading ? 'Creating…' : "Let's go!"}
                 </button>
               </div>
             </div>

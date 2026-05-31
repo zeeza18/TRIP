@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { ActivityIcon } from '../components/Icons'
 import toast from 'react-hot-toast'
 import { api } from '../api'
 import { useAuth } from '../contexts/AuthContext'
@@ -11,6 +12,7 @@ interface Activity {
   isDone: boolean
   participantCount: number
   isParticipating: boolean
+  participants: { userId: string; name: string | null; email: string }[]
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -72,7 +74,7 @@ export default function ActivitiesTab() {
     catch { toast.error('Failed to delete') }
   }
 
-  if (loading) return <div className="flex justify-center py-20 text-4xl animate-bounce">🏕</div>
+  if (loading) return <div className="flex justify-center py-20">Loading...</div>
 
   return (
     <div className="px-4 py-4">
@@ -88,7 +90,7 @@ export default function ActivitiesTab() {
       {isAdmin && showForm && (
         <div className="bg-white rounded-2xl p-4 mb-4 shadow-sm space-y-3">
           <input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))}
-            placeholder="Icon emoji (e.g. 🛶)"
+            placeholder="Icon name (e.g. canoe)"
             className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
           <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Activity name *"
@@ -107,18 +109,24 @@ export default function ActivitiesTab() {
         {activities.map(a => (
           <div key={a.id} className={`bg-white rounded-2xl p-4 shadow-sm border-l-4 ${a.isDone ? 'border-green-400 opacity-80' : 'border-transparent'}`}>
             <div className="flex items-start gap-3">
-              <div className="text-3xl w-10 text-center shrink-0">{a.icon || '🎯'}</div>
+              <div className="text-3xl w-10 text-center shrink-0">{a.icon || <ActivityIcon />}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold text-dark text-sm">{a.name}</h3>
                   {a.isDone && (
-                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">✓ Done</span>
+                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Done</span>
                   )}
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${a.estPrice > 0 ? CATEGORY_COLORS.paid : CATEGORY_COLORS.free}`}>
                     {a.estPrice > 0 ? `$${a.estPrice}/person` : 'Free'}
                   </span>
                 </div>
                 <p className="text-xs text-muted mt-1">{a.participantCount} {a.participantCount === 1 ? 'person' : 'people'} in</p>
+                {a.isParticipating && a.estPrice > 0 && !a.isDone && (
+                  <p className="text-xs text-secondary font-semibold mt-0.5">+${a.estPrice} pending on your bill</p>
+                )}
+                {a.isParticipating && a.estPrice > 0 && a.isDone && (
+                  <p className="text-xs text-danger font-semibold mt-0.5">${a.estPrice} charged to your bill</p>
+                )}
               </div>
               <div className="flex flex-col gap-2 items-end shrink-0">
                 {!a.isDone && (
@@ -130,7 +138,7 @@ export default function ActivitiesTab() {
                         : 'bg-gray-100 text-dark hover:bg-gray-200'
                     }`}
                   >
-                    {a.isParticipating ? "✓ I'm in" : "I'm in?"}
+                    {a.isParticipating ? "I'm in" : "I'm in?"}
                   </button>
                 )}
                 {isAdmin && !a.isDone && (
@@ -150,7 +158,7 @@ export default function ActivitiesTab() {
 
       {activities.length === 0 && !showForm && (
         <div className="text-center py-16">
-          <div className="text-5xl mb-3">🏕</div>
+          <div className="text-2xl mb-3">No activities</div>
           <p className="text-muted text-sm">No activities yet.</p>
           {isAdmin && <p className="text-muted text-xs mt-1">Tap "+ Add" or use Admin → Seed defaults</p>}
         </div>

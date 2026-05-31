@@ -1,6 +1,8 @@
 import axios from 'axios'
 
-export const api = axios.create({ baseURL: 'http://localhost:4001' })
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4001'
+
+export const api = axios.create({ baseURL: API_URL })
 
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('accessToken')
@@ -17,7 +19,7 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('refreshToken')
       if (refreshToken) {
         try {
-          const res = await axios.post('http://localhost:4001/auth/refresh', { refreshToken })
+          const res = await axios.post(`${API_URL}/auth/refresh`, { refreshToken })
           localStorage.setItem('accessToken', res.data.accessToken)
           original.headers.Authorization = `Bearer ${res.data.accessToken}`
           return api(original)

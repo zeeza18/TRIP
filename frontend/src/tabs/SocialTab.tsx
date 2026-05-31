@@ -9,7 +9,7 @@ interface Sender { id: string; name: string | null; email: string }
 interface Message { id: string; senderId: string; sender: Sender; body: string; createdAt: string; reactions: Reaction[] }
 interface Announcement { id: string; title: string; body: string }
 
-const EMOJIS = ['👍', '❤️', '😂', '🔥', '🐸']
+const EMOJIS = ['🐸']
 
 function initials(sender: Sender) {
   if (sender.name) return sender.name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
@@ -40,7 +40,7 @@ export default function SocialTab() {
     api.get('/announcements').then(res => setAnnouncements(res.data))
 
     const token = localStorage.getItem('accessToken') || ''
-    const socket = io('http://localhost:4001', { auth: { token } })
+    const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:4001', { auth: { token } })
     socketRef.current = socket
 
     socket.on('message:new', (msg: Message) => {
@@ -58,7 +58,7 @@ export default function SocialTab() {
 
     socket.on('announcement:new', (a: Announcement) => {
       setAnnouncements(prev => [a, ...prev])
-      toast(a.title, { icon: '📣' })
+      toast(a.title)
     })
 
     return () => { socket.disconnect() }
@@ -93,12 +93,12 @@ export default function SocialTab() {
       {/* Announcement banner */}
       {latestAnnouncement && latestAnnouncement.id !== dismissedAnnouncement && (
         <div className="mx-4 mt-3 bg-secondary/15 border border-secondary/30 rounded-xl p-3 flex items-start gap-3">
-          <span className="text-xl">📣</span>
+          <span className="text-xl">Announcement</span>
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-dark">{latestAnnouncement.title}</p>
             <p className="text-xs text-muted mt-0.5 truncate">{latestAnnouncement.body}</p>
           </div>
-          <button onClick={() => setDismissedAnnouncement(latestAnnouncement.id)} className="text-muted text-xs shrink-0">✕</button>
+          <button onClick={() => setDismissedAnnouncement(latestAnnouncement.id)} className="text-muted text-xs shrink-0">x</button>
         </div>
       )}
 
@@ -106,8 +106,8 @@ export default function SocialTab() {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2" onClick={() => setPickerFor(null)}>
         {messages.length === 0 && (
           <div className="text-center py-10">
-            <div className="text-4xl mb-2">💬</div>
-            <p className="text-muted text-sm">No messages yet. Say hi! 👋</p>
+            <div className="text-4xl mb-2">Messages</div>
+            <p className="text-muted text-sm">No messages yet. Say hi!</p>
           </div>
         )}
         {messages.map(msg => {
@@ -174,7 +174,7 @@ export default function SocialTab() {
           disabled={!text.trim()}
           className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40 hover:opacity-90 active:scale-95 transition-all text-lg"
         >
-          ➤
+          Send
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { ActivityIcon, TransportIcon, FoodIcon, DrinksIcon, OtherIcon } from '../components/Icons'
 import toast from 'react-hot-toast'
 import { api } from '../api'
 
@@ -8,10 +9,14 @@ interface Split {
   expense: { name: string; category: string; createdAt: string }
 }
 
+interface PendingActivity { id: string; name: string; estPrice: number; icon: string | null }
+
 interface BillingData {
   total: number
   splits: Split[]
   poolPerPerson: number
+  pendingActivities: PendingActivity[]
+  pendingActivityCost: number
 }
 
 const CAT_COLORS: Record<string, string> = {
@@ -23,13 +28,13 @@ const CAT_COLORS: Record<string, string> = {
   Other:         'bg-gray-100 text-gray-600',
 }
 
-const CAT_ICONS: Record<string, string> = {
-  Accommodation: '🏕',
-  Transport:     '🚗',
-  Food:          '🍔',
-  Activity:      '🏕',
-  Drinks:        '🍺',
-  Other:         '💸',
+const CAT_ICONS: Record<string, React.ReactNode> = {
+  Accommodation: <ActivityIcon />,
+  Transport:     <TransportIcon />,
+  Food:          <FoodIcon />,
+  Activity:      <ActivityIcon />,
+  Drinks:        <DrinksIcon />,
+  Other:         <OtherIcon />,
 }
 
 function formatDate(iso: string) {
@@ -50,7 +55,7 @@ export default function BillingTab() {
 
   useEffect(() => { load() }, [])
 
-  if (loading) return <div className="flex justify-center py-20 text-4xl animate-bounce">💰</div>
+  if (loading) return <div className="flex justify-center py-20">Loading...</div>
   if (!data) return null
 
   const balance = data.poolPerPerson - data.total
@@ -75,13 +80,33 @@ export default function BillingTab() {
         )}
       </div>
 
+      {/* Pending activities */}
+      {data.pendingActivities?.length > 0 && (
+        <div className="bg-secondary/5 border border-secondary/20 rounded-2xl p-4 mb-4">
+          <p className="text-xs font-semibold text-secondary mb-2">Pending activity charges</p>
+          <div className="space-y-1.5">
+            {data.pendingActivities.map(a => (
+              <div key={a.id} className="flex items-center justify-between">
+                <span className="text-sm text-dark">{a.name}</span>
+                <span className="text-sm font-semibold text-secondary">+${a.estPrice.toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 pt-2 border-t border-secondary/20 flex justify-between text-xs font-semibold text-secondary">
+            <span>Total pending</span>
+            <span>${data.pendingActivityCost.toFixed(2)}</span>
+          </div>
+          <p className="text-[11px] text-muted mt-1">Added to your bill when admin marks activity done</p>
+        </div>
+      )}
+
       {/* Expense list */}
       {data.splits.length > 0 ? (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-dark mb-2">Expense breakdown</h3>
           {data.splits.map(s => (
             <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-3">
-              <div className="text-xl w-8 text-center">{CAT_ICONS[s.expense.category] || '💸'}</div>
+              <div className="text-xl w-8 text-center">{CAT_ICONS[s.expense.category] || ''}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-dark truncate">{s.expense.name}</p>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -97,7 +122,7 @@ export default function BillingTab() {
         </div>
       ) : (
         <div className="text-center py-12">
-          <div className="text-5xl mb-3">🎉</div>
+          <div className="text-5xl mb-3">No expenses</div>
           <p className="text-muted text-sm">No expenses charged yet.</p>
           <p className="text-muted text-xs mt-1">Admin will add expenses as the trip progresses.</p>
         </div>

@@ -55,22 +55,14 @@ app.post('/auth/refresh', async (req: any, res: any) => {
 })
 
 app.post('/auth/register', async (req: any, res: any) => {
-  const { email, password, name, phone, boozePref, inviteToken } = req.body
+  const { email, password, name, phone, boozePref, idProof } = req.body
   if (!email || !password) return res.status(400).json({ error: 'email and password required' })
-  if (inviteToken) {
-    try {
-      const payload = jwt.verify(inviteToken, JWT_SECRET) as any
-      if (payload.type !== 'invite' || payload.sub !== email)
-        return res.status(403).json({ error: 'Invalid invite token' })
-    } catch { return res.status(403).json({ error: 'Invite token expired or invalid' }) }
-  } else {
-    const approved = await prisma.approvedEmail.findUnique({ where: { email } })
-    if (!approved) return res.status(403).json({ error: 'Email not on guest list' })
-  }
+  const approved = await prisma.approvedEmail.findUnique({ where: { email } })
+  if (!approved) return res.status(403).json({ error: 'Email not on guest list' })
   const existing = await prisma.user.findUnique({ where: { email } })
   if (existing) return res.status(409).json({ error: 'Account already exists — please login' })
   const hashed = await bcrypt.hash(password, 10)
-  const user = await prisma.user.create({ data: { email, password: hashed, name, phone, boozePref, onboarded: true } })
+  const user = await prisma.user.create({ data: { email, password: hashed, name, phone, boozePref, idProof, onboarded: true } })
   const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } })
   for (const admin of admins) {
     try {
@@ -87,7 +79,7 @@ app.post('/auth/register', async (req: any, res: any) => {
 app.get('/users/me', authMiddleware, async (req: AuthRequest, res: any) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user?.sub },
-    select: { id: true, email: true, name: true, phone: true, boozePref: true, role: true, onboarded: true }
+    select: { id: true, email: true, name: true, phone: true, boozePref: true, role: true, onboarded: true, idProof: true }
   })
   res.json(user)
 })
@@ -96,11 +88,43 @@ app.get('/users/me', authMiddleware, async (req: AuthRequest, res: any) => {
 
 app.get('/admin/users', authMiddleware, adminOnly, async (_req: AuthRequest, res: any) => {
   const users = await prisma.user.findMany({
-    select: { id: true, email: true, name: true, phone: true, boozePref: true, role: true, onboarded: true, createdAt: true },
+    select: { id: true, email: true, name: true, phone: true, boozePref: true, role: true, onboarded: true, idProof: true, createdAt: true },
     orderBy: { createdAt: 'asc' }
   })
   const approved = await prisma.approvedEmail.findMany({ orderBy: { email: 'asc' } })
   res.json({ users, approved })
+})
+
+app.delete('/admin/users/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const id = req.params.id
+  if (!id) return res.status(400).json({ error: 'id required' })
+  if (req.user?.sub === id) return res.status(400).json({ error: "Can't delete yourself" })
+  const user = await prisma.user.findUnique({ where: { id } })
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  try {
+    await prisma.user.delete({ where: { id } })
+    res.json({ ok: true })
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete user' })
+  }
+})
+
+app.post('/admin/users/delete-by-email', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'email required' })
+  // Prevent deleting the currently authenticated admin by email
+  const current = await prisma.user.findUnique({ where: { id: req.user?.sub } })
+  if (current && current.email === email) return res.status(400).json({ error: "Can't delete yourself" })
+  // Prevent deleting other admins
+  const adminsWithEmail = await prisma.user.findMany({ where: { email, role: 'ADMIN' } })
+  if (adminsWithEmail.length > 0) return res.status(403).json({ error: 'Cannot delete admin account(s) by email' })
+  try {
+    const deletedUsers = await prisma.user.deleteMany({ where: { email } })
+    await prisma.approvedEmail.deleteMany({ where: { email } })
+    res.json({ ok: true, deleted: deletedUsers.count })
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete by email' })
+  }
 })
 
 app.post('/admin/approve-email', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
@@ -112,12 +136,18 @@ app.post('/admin/approve-email', authMiddleware, adminOnly, async (req: AuthRequ
   res.json(rec)
 })
 
+app.delete('/admin/approved-email', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'email required' })
+  await prisma.approvedEmail.deleteMany({ where: { email } })
+  res.json({ ok: true })
+})
+
 app.post('/admin/send-invite', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
   const { email } = req.body
   if (!email) return res.status(400).json({ error: 'email required' })
   let approved = await prisma.approvedEmail.findUnique({ where: { email } })
   if (!approved) approved = await prisma.approvedEmail.create({ data: { email, addedBy: req.user?.sub } })
-  const inviteToken = jwt.sign({ sub: email, type: 'invite' }, JWT_SECRET, { expiresIn: '7d' })
   try {
     await resend.emails.send({
       from: FROM_EMAIL, to: [email],
@@ -126,11 +156,12 @@ app.post('/admin/send-invite', authMiddleware, adminOnly, async (req: AuthReques
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
           <h1 style="color:#1F6F4A">Bullfrog Bash 🐸</h1>
           <p>You've been invited to join our private trip app for <strong>Bullfrog Lake, June 16–18</strong>!</p>
-          <a href="${FRONTEND_URL}/onboard?token=${inviteToken}"
-             style="display:inline-block;background:#1F6F4A;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;margin:16px 0">
-            Set up your account →
+          <p>Click below to set up your account:</p>
+          <a href="${FRONTEND_URL}/onboard?email=${encodeURIComponent(email)}"
+             style="display:inline-block;background:#1F6F4A;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;margin:16px 0;font-size:16px">
+            Set up my account →
           </a>
-          <p style="color:#9CA3AF;font-size:12px">This link expires in 7 days.</p>
+          <p style="color:#9CA3AF;font-size:12px">Bullfrog Lake, Illinois · June 16–18, 2026</p>
         </div>`
     })
     await prisma.approvedEmail.update({ where: { email }, data: { invited: true } })
@@ -147,7 +178,7 @@ app.post('/admin/notify-all', authMiddleware, adminOnly, async (req: AuthRequest
       await resend.emails.send({
         from: FROM_EMAIL, to: [user.email], subject,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-          <h2 style="color:#1F6F4A">📣 ${subject}</h2><p>${body}</p>
+          <h2 style="color:#1F6F4A">${subject}</h2><p>${body}</p>
           <p style="color:#9CA3AF;font-size:12px">Bullfrog Bash 🐸 — June 16–18</p></div>`
       })
       await prisma.notification.create({ data: { userId: user.id, title: subject, body } })
@@ -164,22 +195,22 @@ app.post('/admin/seed', authMiddleware, adminOnly, async (_req: AuthRequest, res
     data: [
       { date: '2026-06-16', time: 'Morning',   title: 'Depart — group cab / carpool', order: 1 },
       { date: '2026-06-16', time: 'Afternoon', title: 'Check-in at Camp Bullfrog Lake', info: 'Cabins open from 3pm', order: 2 },
-      { date: '2026-06-16', time: 'Evening',   title: 'Set up camp + first bonfire 🔥', order: 3 },
-      { date: '2026-06-17', time: '9:00 AM',   title: 'Kayaking 🛶', info: '$15/hr per kayak — life vests included', order: 1 },
-      { date: '2026-06-17', time: '12:00 PM',  title: 'Lunch at camp 🍴', order: 2 },
-      { date: '2026-06-17', time: '2:00 PM',   title: 'Fishing pier + hiking trails 🥾', info: '40+ miles of trails', order: 3 },
-      { date: '2026-06-17', time: 'Evening',   title: 'BBQ + bonfire + good vibes 🎉', order: 4 },
+      { date: '2026-06-16', time: 'Evening',   title: 'Set up camp + first bonfire', order: 3 },
+      { date: '2026-06-17', time: '9:00 AM',   title: 'Kayaking', info: '$15/hr per kayak — life vests included', order: 1 },
+      { date: '2026-06-17', time: '12:00 PM',  title: 'Lunch at camp', order: 2 },
+      { date: '2026-06-17', time: '2:00 PM',   title: 'Fishing pier + hiking trails', info: '40+ miles of trails', order: 3 },
+      { date: '2026-06-17', time: 'Evening',   title: 'BBQ + bonfire + good vibes', order: 4 },
       { date: '2026-06-18', time: '9:00 AM',   title: 'Breakfast + pack up', order: 1 },
       { date: '2026-06-18', time: '12:00 PM',  title: 'Check-out + group cab back', order: 2 },
     ]
   })
   await prisma.activity.createMany({
     data: [
-      { name: 'Kayaking',        estPrice: 15, icon: '🛶' },
-      { name: 'Fishing',         estPrice: 0,  icon: '🎣' },
-      { name: 'Hiking / Trails', estPrice: 0,  icon: '🥾' },
-      { name: 'Bonfire Night',   estPrice: 0,  icon: '🔥' },
-      { name: 'BBQ',             estPrice: 0,  icon: '🍖' },
+      { name: 'Kayaking',        estPrice: 15, icon: '' },
+      { name: 'Fishing',         estPrice: 0,  icon: '' },
+      { name: 'Hiking / Trails', estPrice: 0,  icon: '' },
+      { name: 'Bonfire Night',   estPrice: 0,  icon: '' },
+      { name: 'BBQ',             estPrice: 0,  icon: '' },
     ]
   })
   res.json({ ok: true })
@@ -222,8 +253,13 @@ app.patch('/itinerary/:id', authMiddleware, adminOnly, async (req: AuthRequest, 
 })
 
 app.delete('/itinerary/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
-  await prisma.itineraryItem.delete({ where: { id: req.params.id } })
-  res.json({ ok: true })
+  try {
+    await prisma.itineraryItem.delete({ where: { id: req.params.id } })
+    res.json({ ok: true })
+  } catch (e: any) {
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'Item not found' })
+    throw e
+  }
 })
 
 // ─── ACTIVITIES ─────────────────────────────────────────────────────────────
@@ -231,13 +267,14 @@ app.delete('/itinerary/:id', authMiddleware, adminOnly, async (req: AuthRequest,
 app.get('/activities', authMiddleware, async (req: AuthRequest, res: any) => {
   const userId = req.user?.sub
   const activities = await prisma.activity.findMany({
-    include: { participations: { select: { userId: true } } },
+    include: { participations: { include: { user: { select: { id: true, name: true, email: true } } } } },
     orderBy: { createdAt: 'asc' }
   })
   res.json(activities.map(a => ({
     ...a,
     participantCount: a.participations.length,
     isParticipating: a.participations.some(p => p.userId === userId),
+    participants: a.participations.map(p => ({ userId: p.userId, name: p.user.name, email: p.user.email })),
     participations: undefined
   })))
 })
@@ -273,9 +310,26 @@ app.patch('/activities/:id', authMiddleware, adminOnly, async (req: AuthRequest,
 })
 
 app.delete('/activities/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
-  await prisma.participation.deleteMany({ where: { activityId: req.params.id } })
-  await prisma.activity.delete({ where: { id: req.params.id } })
-  res.json({ ok: true })
+  try {
+    await prisma.participation.deleteMany({ where: { activityId: req.params.id } })
+    await prisma.activity.delete({ where: { id: req.params.id } })
+    res.json({ ok: true })
+  } catch (e: any) {
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'Activity not found' })
+    throw e
+  }
+})
+
+app.post('/admin/activities/:id/toggle-user/:userId', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const activityId = req.params.id
+  const userId = req.params.userId
+  const existing = await prisma.participation.findUnique({ where: { activityId_userId: { activityId, userId } } })
+  if (existing) {
+    await prisma.participation.delete({ where: { activityId_userId: { activityId, userId } } })
+    return res.json({ participating: false })
+  }
+  await prisma.participation.create({ data: { activityId, userId } })
+  res.json({ participating: true })
 })
 
 app.post('/activities/:id/participate', authMiddleware, async (req: AuthRequest, res: any) => {
@@ -321,9 +375,14 @@ app.post('/expenses', authMiddleware, adminOnly, async (req: AuthRequest, res: a
 })
 
 app.delete('/expenses/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
-  await prisma.expenseSplit.deleteMany({ where: { expenseId: req.params.id } })
-  await prisma.expense.delete({ where: { id: req.params.id } })
-  res.json({ ok: true })
+  try {
+    await prisma.expenseSplit.deleteMany({ where: { expenseId: req.params.id } })
+    await prisma.expense.delete({ where: { id: req.params.id } })
+    res.json({ ok: true })
+  } catch (e: any) {
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'Expense not found' })
+    throw e
+  }
 })
 
 // ─── BILLING ──────────────────────────────────────────────────────────────
@@ -336,7 +395,18 @@ app.get('/billing/me', authMiddleware, async (req: AuthRequest, res: any) => {
   })
   const total = splits.reduce((sum, s) => sum + s.share, 0)
   const config = await prisma.tripConfig.findFirst()
-  res.json({ total: +total.toFixed(2), splits, poolPerPerson: config?.poolPerPerson || 0 })
+  const participations = await prisma.participation.findMany({
+    where: { userId, activity: { isDone: false } },
+    include: { activity: { select: { id: true, name: true, estPrice: true, icon: true } } }
+  })
+  const pendingActivityCost = participations.reduce((sum, p) => sum + p.activity.estPrice, 0)
+  res.json({
+    total: +total.toFixed(2),
+    splits,
+    poolPerPerson: config?.poolPerPerson || 0,
+    pendingActivities: participations.map(p => p.activity),
+    pendingActivityCost: +pendingActivityCost.toFixed(2)
+  })
 })
 
 app.get('/billing/all', authMiddleware, adminOnly, async (_req: AuthRequest, res: any) => {
@@ -436,4 +506,20 @@ io.on('connection', (socket) => {
 
 // ─── START ──────────────────────────────────────────────────────────────────
 
-server.listen(PORT, () => console.log(`🐸 Bullfrog Bash backend on :${PORT}`))
+async function ensureAdmin() {
+  const email = 'mdazeezulla2020@gmail.com'
+  try {
+    const existing = await prisma.user.findUnique({ where: { email } })
+    if (!existing) {
+      const hashed = await bcrypt.hash('Zeeza_tri@6996', 10)
+      await prisma.user.create({ data: { email, password: hashed, name: 'Admin', role: 'ADMIN', onboarded: true } })
+      await prisma.approvedEmail.upsert({ where: { email }, update: { invited: true }, create: { email, invited: true } })
+      console.log('Admin account created:', email)
+    }
+  } catch (e) { console.error('Admin seed failed:', e) }
+}
+
+server.listen(PORT, async () => {
+  console.log(`🐸 Bullfrog Bash backend on :${PORT}`)
+  await ensureAdmin()
+})

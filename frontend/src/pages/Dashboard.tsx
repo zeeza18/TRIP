@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { CalendarIcon, ChatIcon, ActivityIcon, BillingIcon, AdminIcon } from '../components/Icons'
 import { useAuth } from '../contexts/AuthContext'
 import ItineraryTab from '../tabs/ItineraryTab'
 import SocialTab from '../tabs/SocialTab'
@@ -12,7 +13,7 @@ function countdown() {
   const trip = new Date('2026-06-16')
   const now = new Date()
   const diff = Math.ceil((trip.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-  if (diff <= 0) return "It's happening! 🎉"
+  if (diff <= 0) return "It's happening!"
   if (diff === 1) return '1 day to go!'
   return `${diff} days to go`
 }
@@ -22,12 +23,12 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>('itinerary')
   const [notifCount, setNotifCount] = useState(0)
 
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: 'itinerary',  label: 'Itinerary',   icon: '🗓' },
-    { id: 'social',     label: 'Social',       icon: '💬' },
-    { id: 'activities', label: 'Activities',   icon: '🏕' },
-    { id: 'billing',    label: 'Billing',      icon: '💰' },
-    ...(isAdmin ? [{ id: 'admin' as Tab, label: 'Admin', icon: '⚙️' }] : [])
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'itinerary',  label: 'Itinerary',   icon: <CalendarIcon /> },
+    { id: 'social',     label: 'Social',       icon: <ChatIcon /> },
+    { id: 'activities', label: 'Activities',   icon: <ActivityIcon /> },
+    { id: 'billing',    label: 'Billing',      icon: <BillingIcon /> },
+    ...(isAdmin ? [{ id: 'admin' as Tab, label: 'Admin', icon: <AdminIcon /> }] : [])
   ]
 
   return (

@@ -1,33 +1,41 @@
 import React, { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { api } from '../api'
+import { ActivityIcon } from '../components/Icons'
+import { useAuth } from '../contexts/AuthContext'
 
 interface ApprovedEmail { id: string; email: string; invited: boolean }
-interface UserRow { id: string; email: string; name: string | null; phone: string | null; boozePref: string | null; onboarded: boolean }
+interface UserRow { id: string; email: string; name: string | null; phone: string | null; boozePref: string | null; onboarded: boolean; idProof: string | null; role: string }
 interface BillingSummary { id: string; name: string | null; email: string; totalCharged: number; poolPerPerson: number; balance: number }
+interface ActivityRow { id: string; name: string; estPrice: number; icon: string | null; isDone: boolean; participants: { userId: string; name: string | null; email: string }[] }
 
 const CATEGORIES = ['Accommodation', 'Transport', 'Food', 'Activity', 'Drinks', 'Other']
 
 export default function AdminTab() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<UserRow[]>([])
   const [approved, setApproved] = useState<ApprovedEmail[]>([])
   const [billing, setBilling] = useState<BillingSummary[]>([])
+  const [activities, setActivities] = useState<ActivityRow[]>([])
   const [poolInput, setPoolInput] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [expenseForm, setExpenseForm] = useState({ name: '', amount: '', category: 'Accommodation', splitAll: true })
   const [notifForm, setNotifForm] = useState({ subject: '', body: '' })
   const [sending, setSending] = useState(false)
-  const [section, setSection] = useState<'crew' | 'expenses' | 'announce'>('crew')
+  const [section, setSection] = useState<'crew' | 'activities' | 'expenses' | 'announce'>('crew')
+  const [toggling, setToggling] = useState<string | null>(null)
 
   async function loadData() {
     try {
-      const [usersRes, billingRes] = await Promise.all([
+      const [usersRes, billingRes, actRes] = await Promise.all([
         api.get('/admin/users'),
         api.get('/billing/all'),
+        api.get('/activities'),
       ])
       setUsers(usersRes.data.users)
       setApproved(usersRes.data.approved)
       setBilling(billingRes.data)
+      setActivities(actRes.data)
       if (billingRes.data[0]?.poolPerPerson) setPoolInput(String(billingRes.data[0].poolPerPerson))
     } catch { toast.error('Could not load admin data') }
   }
@@ -35,22 +43,31 @@ export default function AdminTab() {
   useEffect(() => { loadData() }, [])
 
   async function sendInvite(email: string) {
+    if (!email.trim()) { toast.error('Enter an email'); return }
     try {
-      await api.post('/admin/send-invite', { email })
+      await api.post('/admin/send-invite', { email: email.trim() })
       toast.success(`Invite sent to ${email}`)
       setInviteEmail('')
       loadData()
-    } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed to send invite') }
+    } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed') }
+  }
+
+  async function toggleUserActivity(activityId: string, userId: string) {
+    const key = `${activityId}-${userId}`
+    setToggling(key)
+    try {
+      await api.post(`/admin/activities/${activityId}/toggle-user/${userId}`)
+      await loadData()
+    } catch { toast.error('Failed to update') }
+    finally { setToggling(null) }
   }
 
   async function addExpense() {
     if (!expenseForm.name || !expenseForm.amount) { toast.error('Name and amount required'); return }
     try {
       await api.post('/expenses', {
-        name: expenseForm.name,
-        amount: parseFloat(expenseForm.amount),
-        category: expenseForm.category,
-        splitAll: expenseForm.splitAll
+        name: expenseForm.name, amount: parseFloat(expenseForm.amount),
+        category: expenseForm.category, splitAll: expenseForm.splitAll
       })
       toast.success('Expense added and split!')
       setExpenseForm({ name: '', amount: '', category: 'Accommodation', splitAll: true })
@@ -61,7 +78,7 @@ export default function AdminTab() {
   async function updatePool() {
     try {
       await api.patch('/config', { poolPerPerson: parseFloat(poolInput) || 0 })
-      toast.success('Pool contribution updated')
+      toast.success('Pool updated')
       loadData()
     } catch { toast.error('Failed') }
   }
@@ -70,6 +87,7 @@ export default function AdminTab() {
     try {
       await api.post('/admin/seed', {})
       toast.success('Itinerary + activities seeded!')
+      loadData()
     } catch { toast.error('Failed to seed') }
   }
 
@@ -80,76 +98,128 @@ export default function AdminTab() {
       const res = await api.post('/admin/notify-all', notifForm)
       toast.success(`Sent to ${res.data.sent} people!`)
       setNotifForm({ subject: '', body: '' })
-    } catch { toast.error('Failed to send') }
+    } catch { toast.error('Failed') }
     finally { setSending(false) }
   }
 
-  const joinedUsers = users.filter(u => u.onboarded)
+  // Show only onboarded users, deduplicated by email (avoid duplicate rows)
+  const joinedUsers = Array.from(
+    new Map(users.filter(u => u.onboarded).map(u => [u.email, u])).values()
+  )
   const pendingEmails = approved.filter(a => !users.find(u => u.email === a.email && u.onboarded))
 
   return (
     <div className="px-4 py-4">
-      <h2 className="text-xl font-bold text-dark mb-1">Admin Panel</h2>
-      <p className="text-xs text-muted mb-4">Bullfrog Bash — Jun 16–18</p>
-
-      {/* Quick actions */}
-      <div className="flex gap-2 mb-5">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-xl font-bold text-dark">Admin Panel</h2>
+          <p className="text-xs text-muted">Bullfrog Bash · Jun 16–18</p>
+        </div>
         <button onClick={seedDefaults}
-          className="flex-1 py-2 text-xs bg-accent/10 text-accent font-semibold rounded-xl hover:bg-accent/20">
-          🌱 Seed defaults
+          className="px-3 py-1.5 text-xs bg-accent/10 text-accent font-semibold rounded-xl hover:bg-accent/20">
+          Seed
         </button>
       </div>
 
       {/* Section tabs */}
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-xl">
-        {(['crew', 'expenses', 'announce'] as const).map(s => (
+        {([
+          ['crew', `Crew (${joinedUsers.length}/16)`],
+          ['activities', 'Activities'],
+          ['expenses', 'Expenses'],
+          ['announce', 'Announce'],
+        ] as const).map(([s, label]) => (
           <button key={s} onClick={() => setSection(s)}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all ${section === s ? 'bg-white text-primary shadow-sm' : 'text-muted'}`}>
-            {s === 'crew' ? `👥 Crew (${joinedUsers.length}/16)` : s === 'expenses' ? '💸 Expenses' : '📣 Announce'}
+            className={`flex-1 py-1.5 text-[11px] font-semibold rounded-lg transition-all ${section === s ? 'bg-white text-primary shadow-sm' : 'text-muted'}`}>
+            {label}
           </button>
         ))}
       </div>
 
-      {/* CREW */}
+      {/* ── CREW ── */}
       {section === 'crew' && (
         <div className="space-y-4">
-          {/* Send invite form */}
           <div className="bg-white rounded-2xl p-4 shadow-sm">
-            <p className="text-xs font-semibold text-dark mb-2">Send invite</p>
+            <p className="text-xs font-semibold text-dark mb-2">Invite someone</p>
             <div className="flex gap-2">
               <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
-                placeholder="email@example.com" type="email"
+                onKeyDown={e => e.key === 'Enter' && sendInvite(inviteEmail)}
+                placeholder="their@email.com" type="email"
                 className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
-              <button onClick={() => sendInvite(inviteEmail)} className="px-3 py-2 bg-primary text-white text-sm rounded-xl font-semibold">Send</button>
+              <button onClick={() => sendInvite(inviteEmail)}
+                className="px-4 py-2 bg-primary text-white text-sm rounded-xl font-semibold">Send</button>
             </div>
+            <p className="text-[11px] text-muted mt-1.5">They'll get an email with a signup link</p>
           </div>
 
-          {/* Joined */}
           <div className="bg-white rounded-2xl p-4 shadow-sm">
             <p className="text-xs font-semibold text-dark mb-3">Joined ({joinedUsers.length})</p>
-            <div className="space-y-2">
-              {joinedUsers.map(u => (
-                <div key={u.id} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                    {(u.name || u.email)[0].toUpperCase()}
+            {joinedUsers.length === 0
+              ? <p className="text-xs text-muted">No one has joined yet.</p>
+              : <div className="space-y-3">
+                {joinedUsers.map(u => (
+                  <div key={u.id} className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0 mt-0.5">
+                      {(u.name || u.email)[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-dark">{u.name || '—'}</p>
+                      <p className="text-xs text-muted truncate">{u.email}</p>
+                      {u.idProof ? (
+                        <p className="text-[11px] text-accent font-medium mt-0.5">ID: {u.idProof}</p>
+                      ) : (
+                        u.role === 'ADMIN' ? (
+                          <p className="text-[11px] text-muted mt-0.5">Admin</p>
+                        ) : (
+                          <p className="text-[11px] text-danger mt-0.5">No ID on file</p>
+                        )
+                      )}
+                    </div>
+                    <div className="text-xs text-muted text-right shrink-0">
+                      {u.phone && <p>{u.phone}</p>}
+                      <p>{u.boozePref === 'yay' ? 'YAY' : u.boozePref === 'nah' ? 'NAH' : ''}</p>
+                    </div>
+                    <div className="flex flex-col gap-2 items-end">
+                      {u.id !== currentUser?.id && (
+                        <>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Delete user ${u.email}? This cannot be undone.`)) return
+                              try {
+                                await api.delete(`/admin/users/${u.id}`)
+                                toast.success('User deleted')
+                                loadData()
+                              } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed to delete user') }
+                            }}
+                            className="text-xs text-danger hover:opacity-80"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Remove all records for ${u.email}? This will delete all accounts and invites for this email.`)) return
+                              try {
+                                await api.post('/admin/users/delete-by-email', { email: u.email })
+                                toast.success('All records removed for this email')
+                                loadData()
+                              } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed to remove by email') }
+                            }}
+                            className="text-xs text-danger/80 hover:opacity-80"
+                          >
+                            Remove all
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-dark">{u.name || '—'}</p>
-                    <p className="text-xs text-muted truncate">{u.email}</p>
-                  </div>
-                  <div className="text-xs text-muted text-right shrink-0">
-                    {u.phone && <p>{u.phone}</p>}
-                    {u.boozePref && <p>{u.boozePref === 'yay' ? '🍺' : '🧃'}</p>}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            }
           </div>
 
-          {/* Pending */}
           {pendingEmails.length > 0 && (
             <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <p className="text-xs font-semibold text-dark mb-3">Pending invite ({pendingEmails.length})</p>
+              <p className="text-xs font-semibold text-dark mb-3">Pending ({pendingEmails.length})</p>
               <div className="space-y-2">
                 {pendingEmails.map(a => (
                   <div key={a.id} className="flex items-center gap-3">
@@ -159,25 +229,34 @@ export default function AdminTab() {
                       className="text-xs text-primary font-semibold hover:opacity-80 shrink-0">
                       {a.invited ? 'Resend' : 'Invite'}
                     </button>
+                    <button onClick={async () => {
+                      if (!confirm(`Remove ${a.email} from guest list?`)) return
+                      try {
+                        await api.delete('/admin/approved-email', { data: { email: a.email } })
+                        toast.success('Removed')
+                        loadData()
+                      } catch { toast.error('Failed to remove') }
+                    }} className="text-xs text-danger hover:opacity-80 shrink-0">
+                      Remove
+                    </button>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Billing summary */}
           {billing.length > 0 && (
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-xs font-semibold text-dark">Settlement summary</p>
+                <p className="text-xs font-semibold text-dark">Settlement</p>
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted">Pool: $</span>
+                  <span className="text-xs text-muted">Pool $</span>
                   <input value={poolInput} onChange={e => setPoolInput(e.target.value)}
                     className="w-14 text-xs border border-gray-200 rounded-lg px-1.5 py-1 text-dark focus:outline-none focus:ring-1 focus:ring-primary" />
                   <button onClick={updatePool} className="text-xs text-primary font-semibold ml-1">Save</button>
                 </div>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {billing.map(b => (
                   <div key={b.id} className="flex items-center justify-between">
                     <p className="text-xs text-dark truncate max-w-[60%]">{b.name || b.email}</p>
@@ -192,7 +271,64 @@ export default function AdminTab() {
         </div>
       )}
 
-      {/* EXPENSES */}
+      {/* ── ACTIVITIES ── */}
+      {section === 'activities' && (
+        <div className="space-y-4">
+          <p className="text-xs text-muted">Check crew into activities. Cost adds to their bill when you mark done.</p>
+          {activities.length === 0 && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
+              <p className="text-muted text-sm mb-2">No activities yet.</p>
+              <button onClick={seedDefaults} className="text-xs text-primary font-semibold">Seed defaults</button>
+            </div>
+          )}
+          {activities.map(a => (
+            <div key={a.id} className="bg-white rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xl">{a.icon || <ActivityIcon />}</span>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold text-dark">{a.name}</h3>
+                  <p className="text-xs text-muted">
+                    {a.estPrice > 0 ? `$${a.estPrice}/person` : 'Free'} · {a.participants.length} in
+                  </p>
+                </div>
+                {a.isDone && (
+                  <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Done</span>
+                )}
+              </div>
+              {joinedUsers.length === 0
+                ? <p className="text-xs text-muted">No crew joined yet.</p>
+                : <div className="space-y-1">
+                  {joinedUsers.map(u => {
+                    const isIn = a.participants.some(p => p.userId === u.id)
+                    const key = `${a.id}-${u.id}`
+                    return (
+                      <label key={u.id}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all ${isIn ? 'bg-primary/5' : 'hover:bg-gray-50'} ${a.isDone ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                        <input
+                          type="checkbox"
+                          checked={isIn}
+                          disabled={toggling === key || a.isDone}
+                          onChange={() => toggleUserActivity(a.id, u.id)}
+                          className="w-4 h-4 accent-primary shrink-0"
+                        />
+                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
+                          {(u.name || u.email)[0].toUpperCase()}
+                        </div>
+                        <span className="text-sm text-dark flex-1">{u.name || u.email}</span>
+                        {isIn && a.estPrice > 0 && (
+                          <span className="text-xs font-semibold text-secondary">${a.estPrice}</span>
+                        )}
+                      </label>
+                    )
+                  })}
+                </div>
+              }
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── EXPENSES ── */}
       {section === 'expenses' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
@@ -213,7 +349,7 @@ export default function AdminTab() {
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={expenseForm.splitAll} onChange={e => setExpenseForm(f => ({ ...f, splitAll: e.target.checked }))}
                 className="w-4 h-4 accent-primary" />
-              <span className="text-sm text-dark">Split equally across all 16</span>
+              <span className="text-sm text-dark">Split equally across all crew</span>
             </label>
             <button onClick={addExpense} className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm">
               Add &amp; Split
@@ -222,7 +358,7 @@ export default function AdminTab() {
         </div>
       )}
 
-      {/* ANNOUNCE */}
+      {/* ── ANNOUNCE ── */}
       {section === 'announce' && (
         <div className="space-y-4">
           <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
@@ -232,12 +368,11 @@ export default function AdminTab() {
               placeholder="Subject / title"
               className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
             <textarea value={notifForm.body} onChange={e => setNotifForm(f => ({ ...f, body: e.target.value }))}
-              placeholder="Message body..."
-              rows={4}
+              placeholder="Message body..." rows={4}
               className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
             <button onClick={sendNotification} disabled={sending}
               className="w-full py-2.5 bg-secondary text-white rounded-xl font-semibold text-sm disabled:opacity-60">
-              {sending ? 'Sending…' : '📣 Send to All'}
+              {sending ? 'Sending…' : 'Send to All'}
             </button>
           </div>
         </div>
