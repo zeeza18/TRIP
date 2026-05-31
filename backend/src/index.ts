@@ -1,0 +1,439 @@
+import express from 'express'
+import dotenv from 'dotenv'
+import cors from 'cors'
+import http from 'http'
+import { Server as SocketServer } from 'socket.io'
+import bcrypt from 'bcrypt'
+import jwt from 'jsonwebtoken'
+import prisma from './prismaClient'
+import { authMiddleware, adminOnly, AuthRequest } from './middleware'
+import { Resend } from 'resend'
+
+dotenv.config()
+
+const app = express()
+const server = http.createServer(app)
+const io = new SocketServer(server, { cors: { origin: '*' } })
+
+app.use(cors())
+app.use(express.json())
+
+const PORT = process.env.PORT || 4000
+const JWT_SECRET = process.env.JWT_SECRET || 'change_me'
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+const FROM_EMAIL = process.env.FROM_EMAIL || 'Bullfrog Bash <onboarding@resend.dev>'
+const resend = new Resend(process.env.RESEND_API_KEY || '')
+
+// ─── AUTH ──────────────────────────────────────────────────────────────────
+
+app.post('/auth/login', async (req: any, res: any) => {
+  const { email, password } = req.body
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' })
+  const user = await prisma.user.findUnique({ where: { email } })
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' })
+  const ok = await bcrypt.compare(password, user.password)
+  if (!ok) return res.status(401).json({ error: 'Invalid credentials' })
+  const access = jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, { expiresIn: '15m' })
+  const refresh = jwt.sign({ sub: user.id, tokenType: 'refresh' }, JWT_SECRET, { expiresIn: '7d' })
+  res.json({
+    accessToken: access, refreshToken: refresh,
+    user: { id: user.id, email: user.email, name: user.name, role: user.role, boozePref: user.boozePref }
+  })
+})
+
+app.post('/auth/refresh', async (req: any, res: any) => {
+  const { refreshToken } = req.body
+  if (!refreshToken) return res.status(400).json({ error: 'refreshToken required' })
+  try {
+    const payload = jwt.verify(refreshToken, JWT_SECRET) as any
+    if (payload.tokenType !== 'refresh') return res.status(401).json({ error: 'Invalid token type' })
+    const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+    if (!user) return res.status(401).json({ error: 'User not found' })
+    const access = jwt.sign({ sub: user.id, role: user.role }, JWT_SECRET, { expiresIn: '15m' })
+    res.json({ accessToken: access })
+  } catch { res.status(401).json({ error: 'Invalid or expired refresh token' }) }
+})
+
+app.post('/auth/register', async (req: any, res: any) => {
+  const { email, password, name, phone, boozePref, inviteToken } = req.body
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' })
+  if (inviteToken) {
+    try {
+      const payload = jwt.verify(inviteToken, JWT_SECRET) as any
+      if (payload.type !== 'invite' || payload.sub !== email)
+        return res.status(403).json({ error: 'Invalid invite token' })
+    } catch { return res.status(403).json({ error: 'Invite token expired or invalid' }) }
+  } else {
+    const approved = await prisma.approvedEmail.findUnique({ where: { email } })
+    if (!approved) return res.status(403).json({ error: 'Email not on guest list' })
+  }
+  const existing = await prisma.user.findUnique({ where: { email } })
+  if (existing) return res.status(409).json({ error: 'Account already exists — please login' })
+  const hashed = await bcrypt.hash(password, 10)
+  const user = await prisma.user.create({ data: { email, password: hashed, name, phone, boozePref, onboarded: true } })
+  const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } })
+  for (const admin of admins) {
+    try {
+      await resend.emails.send({
+        from: FROM_EMAIL, to: [admin.email],
+        subject: `🐸 ${name || email} just joined Bullfrog Bash!`,
+        html: `<p><strong>${name || email}</strong> has set up their account!</p>`
+      })
+    } catch {}
+  }
+  res.json({ id: user.id, email: user.email, name: user.name })
+})
+
+app.get('/users/me', authMiddleware, async (req: AuthRequest, res: any) => {
+  const user = await prisma.user.findUnique({
+    where: { id: req.user?.sub },
+    select: { id: true, email: true, name: true, phone: true, boozePref: true, role: true, onboarded: true }
+  })
+  res.json(user)
+})
+
+// ─── ADMIN ─────────────────────────────────────────────────────────────────
+
+app.get('/admin/users', authMiddleware, adminOnly, async (_req: AuthRequest, res: any) => {
+  const users = await prisma.user.findMany({
+    select: { id: true, email: true, name: true, phone: true, boozePref: true, role: true, onboarded: true, createdAt: true },
+    orderBy: { createdAt: 'asc' }
+  })
+  const approved = await prisma.approvedEmail.findMany({ orderBy: { email: 'asc' } })
+  res.json({ users, approved })
+})
+
+app.post('/admin/approve-email', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'email required' })
+  const existing = await prisma.approvedEmail.findUnique({ where: { email } })
+  if (existing) return res.json(existing)
+  const rec = await prisma.approvedEmail.create({ data: { email, addedBy: req.user?.sub } })
+  res.json(rec)
+})
+
+app.post('/admin/send-invite', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'email required' })
+  let approved = await prisma.approvedEmail.findUnique({ where: { email } })
+  if (!approved) approved = await prisma.approvedEmail.create({ data: { email, addedBy: req.user?.sub } })
+  const inviteToken = jwt.sign({ sub: email, type: 'invite' }, JWT_SECRET, { expiresIn: '7d' })
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL, to: [email],
+      subject: "🐸 You're invited to Bullfrog Bash!",
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h1 style="color:#1F6F4A">Bullfrog Bash 🐸</h1>
+          <p>You've been invited to join our private trip app for <strong>Bullfrog Lake, June 16–18</strong>!</p>
+          <a href="${FRONTEND_URL}/onboard?token=${inviteToken}"
+             style="display:inline-block;background:#1F6F4A;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;margin:16px 0">
+            Set up your account →
+          </a>
+          <p style="color:#9CA3AF;font-size:12px">This link expires in 7 days.</p>
+        </div>`
+    })
+    await prisma.approvedEmail.update({ where: { email }, data: { invited: true } })
+  } catch (err) { console.warn('Resend error', err) }
+  res.json({ ok: true })
+})
+
+app.post('/admin/notify-all', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { subject, body } = req.body
+  if (!subject || !body) return res.status(400).json({ error: 'subject and body required' })
+  const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, email: true } })
+  for (const user of users) {
+    try {
+      await resend.emails.send({
+        from: FROM_EMAIL, to: [user.email], subject,
+        html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+          <h2 style="color:#1F6F4A">📣 ${subject}</h2><p>${body}</p>
+          <p style="color:#9CA3AF;font-size:12px">Bullfrog Bash 🐸 — June 16–18</p></div>`
+      })
+      await prisma.notification.create({ data: { userId: user.id, title: subject, body } })
+    } catch {}
+  }
+  io.emit('notification:new', { title: subject, body })
+  res.json({ ok: true, sent: users.length })
+})
+
+app.post('/admin/seed', authMiddleware, adminOnly, async (_req: AuthRequest, res: any) => {
+  await prisma.itineraryItem.deleteMany()
+  await prisma.activity.deleteMany()
+  await prisma.itineraryItem.createMany({
+    data: [
+      { date: '2026-06-16', time: 'Morning',   title: 'Depart — group cab / carpool', order: 1 },
+      { date: '2026-06-16', time: 'Afternoon', title: 'Check-in at Camp Bullfrog Lake', info: 'Cabins open from 3pm', order: 2 },
+      { date: '2026-06-16', time: 'Evening',   title: 'Set up camp + first bonfire 🔥', order: 3 },
+      { date: '2026-06-17', time: '9:00 AM',   title: 'Kayaking 🛶', info: '$15/hr per kayak — life vests included', order: 1 },
+      { date: '2026-06-17', time: '12:00 PM',  title: 'Lunch at camp 🍴', order: 2 },
+      { date: '2026-06-17', time: '2:00 PM',   title: 'Fishing pier + hiking trails 🥾', info: '40+ miles of trails', order: 3 },
+      { date: '2026-06-17', time: 'Evening',   title: 'BBQ + bonfire + good vibes 🎉', order: 4 },
+      { date: '2026-06-18', time: '9:00 AM',   title: 'Breakfast + pack up', order: 1 },
+      { date: '2026-06-18', time: '12:00 PM',  title: 'Check-out + group cab back', order: 2 },
+    ]
+  })
+  await prisma.activity.createMany({
+    data: [
+      { name: 'Kayaking',        estPrice: 15, icon: '🛶' },
+      { name: 'Fishing',         estPrice: 0,  icon: '🎣' },
+      { name: 'Hiking / Trails', estPrice: 0,  icon: '🥾' },
+      { name: 'Bonfire Night',   estPrice: 0,  icon: '🔥' },
+      { name: 'BBQ',             estPrice: 0,  icon: '🍖' },
+    ]
+  })
+  res.json({ ok: true })
+})
+
+// ─── TRIP CONFIG ───────────────────────────────────────────────────────────
+
+app.get('/config', authMiddleware, async (_req: AuthRequest, res: any) => {
+  let config = await prisma.tripConfig.findFirst()
+  if (!config) config = await prisma.tripConfig.create({ data: { poolPerPerson: 0 } })
+  res.json(config)
+})
+
+app.patch('/config', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { poolPerPerson } = req.body
+  let config = await prisma.tripConfig.findFirst()
+  if (!config) config = await prisma.tripConfig.create({ data: { poolPerPerson: poolPerPerson || 0 } })
+  else config = await prisma.tripConfig.update({ where: { id: config.id }, data: { poolPerPerson } })
+  res.json(config)
+})
+
+// ─── ITINERARY ─────────────────────────────────────────────────────────────
+
+app.get('/itinerary', authMiddleware, async (_req: AuthRequest, res: any) => {
+  const items = await prisma.itineraryItem.findMany({ orderBy: [{ date: 'asc' }, { order: 'asc' }] })
+  res.json(items)
+})
+
+app.post('/itinerary', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { date, time, title, info, order } = req.body
+  if (!date || !title) return res.status(400).json({ error: 'date and title required' })
+  const item = await prisma.itineraryItem.create({ data: { date, time, title, info, order: order || 0 } })
+  res.json(item)
+})
+
+app.patch('/itinerary/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { date, time, title, info } = req.body
+  const item = await prisma.itineraryItem.update({ where: { id: req.params.id }, data: { date, time, title, info } })
+  res.json(item)
+})
+
+app.delete('/itinerary/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  await prisma.itineraryItem.delete({ where: { id: req.params.id } })
+  res.json({ ok: true })
+})
+
+// ─── ACTIVITIES ─────────────────────────────────────────────────────────────
+
+app.get('/activities', authMiddleware, async (req: AuthRequest, res: any) => {
+  const userId = req.user?.sub
+  const activities = await prisma.activity.findMany({
+    include: { participations: { select: { userId: true } } },
+    orderBy: { createdAt: 'asc' }
+  })
+  res.json(activities.map(a => ({
+    ...a,
+    participantCount: a.participations.length,
+    isParticipating: a.participations.some(p => p.userId === userId),
+    participations: undefined
+  })))
+})
+
+app.post('/activities', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { name, estPrice, icon } = req.body
+  if (!name) return res.status(400).json({ error: 'name required' })
+  const activity = await prisma.activity.create({ data: { name, estPrice: estPrice || 0, icon } })
+  res.json(activity)
+})
+
+app.patch('/activities/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { name, estPrice, isDone } = req.body
+  const data: any = {}
+  if (name !== undefined) data.name = name
+  if (estPrice !== undefined) data.estPrice = estPrice
+  if (isDone !== undefined) { data.isDone = isDone; if (isDone) data.doneAt = new Date() }
+  const activity = await prisma.activity.update({ where: { id: req.params.id }, data })
+  if (isDone && activity.estPrice > 0) {
+    const parts = await prisma.participation.findMany({ where: { activityId: activity.id } })
+    if (parts.length > 0) {
+      const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+      if (admin) {
+        const expense = await prisma.expense.create({
+          data: { name: `Activity: ${activity.name}`, amount: activity.estPrice * parts.length, category: 'Activity', paidById: admin.id, splitAll: false }
+        })
+        await prisma.expenseSplit.createMany({ data: parts.map(p => ({ expenseId: expense.id, userId: p.userId, share: activity.estPrice })) })
+        for (const p of parts) await prisma.notification.create({ data: { userId: p.userId, title: `${activity.name} billed`, body: `$${activity.estPrice} added to your tab` } })
+      }
+    }
+  }
+  res.json(activity)
+})
+
+app.delete('/activities/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  await prisma.participation.deleteMany({ where: { activityId: req.params.id } })
+  await prisma.activity.delete({ where: { id: req.params.id } })
+  res.json({ ok: true })
+})
+
+app.post('/activities/:id/participate', authMiddleware, async (req: AuthRequest, res: any) => {
+  const userId = req.user?.sub
+  const activityId = req.params.id
+  const existing = await prisma.participation.findUnique({ where: { activityId_userId: { activityId, userId } } })
+  if (existing) {
+    await prisma.participation.delete({ where: { activityId_userId: { activityId, userId } } })
+    return res.json({ participating: false })
+  }
+  await prisma.participation.create({ data: { activityId, userId } })
+  res.json({ participating: true })
+})
+
+// ─── EXPENSES ──────────────────────────────────────────────────────────────
+
+app.get('/expenses', authMiddleware, async (req: AuthRequest, res: any) => {
+  const userId = req.user?.sub
+  const expenses = await prisma.expense.findMany({
+    include: { paidBy: { select: { name: true, email: true } }, splits: true },
+    orderBy: { createdAt: 'desc' }
+  })
+  res.json(expenses.map(e => ({ ...e, myShare: e.splits.find(s => s.userId === userId)?.share || 0, splitCount: e.splits.length })))
+})
+
+app.post('/expenses', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { name, amount, category, splitAll, userIds } = req.body
+  if (!name || amount === undefined || !category) return res.status(400).json({ error: 'name, amount, category required' })
+  const adminId = req.user?.sub
+  let targetIds: string[] = []
+  if (splitAll !== false) {
+    const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true } })
+    targetIds = users.map(u => u.id)
+  } else { targetIds = userIds || [] }
+  const share = targetIds.length > 0 ? amount / targetIds.length : amount
+  const expense = await prisma.expense.create({ data: { name, amount, category, paidById: adminId, splitAll: splitAll !== false } })
+  if (targetIds.length > 0) {
+    await prisma.expenseSplit.createMany({ data: targetIds.map(uid => ({ expenseId: expense.id, userId: uid, share })) })
+    for (const uid of targetIds) await prisma.notification.create({ data: { userId: uid, title: `New expense: ${name}`, body: `Your share: $${share.toFixed(2)}` } })
+  }
+  io.emit('expense:new', { name, share })
+  res.json({ ...expense, splitCount: targetIds.length, share })
+})
+
+app.delete('/expenses/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  await prisma.expenseSplit.deleteMany({ where: { expenseId: req.params.id } })
+  await prisma.expense.delete({ where: { id: req.params.id } })
+  res.json({ ok: true })
+})
+
+// ─── BILLING ──────────────────────────────────────────────────────────────
+
+app.get('/billing/me', authMiddleware, async (req: AuthRequest, res: any) => {
+  const userId = req.user?.sub
+  const splits = await prisma.expenseSplit.findMany({
+    where: { userId },
+    include: { expense: { select: { name: true, category: true, createdAt: true } } }
+  })
+  const total = splits.reduce((sum, s) => sum + s.share, 0)
+  const config = await prisma.tripConfig.findFirst()
+  res.json({ total: +total.toFixed(2), splits, poolPerPerson: config?.poolPerPerson || 0 })
+})
+
+app.get('/billing/all', authMiddleware, adminOnly, async (_req: AuthRequest, res: any) => {
+  const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, name: true, email: true } })
+  const splits = await prisma.expenseSplit.findMany()
+  const config = await prisma.tripConfig.findFirst()
+  const totals: Record<string, number> = {}
+  for (const s of splits) totals[s.userId] = (totals[s.userId] || 0) + s.share
+  res.json(users.map(u => ({
+    ...u,
+    totalCharged: +(totals[u.id] || 0).toFixed(2),
+    poolPerPerson: config?.poolPerPerson || 0,
+    balance: +((config?.poolPerPerson || 0) - (totals[u.id] || 0)).toFixed(2)
+  })))
+})
+
+// ─── MESSAGES ──────────────────────────────────────────────────────────────
+
+app.get('/messages', authMiddleware, async (_req: AuthRequest, res: any) => {
+  const messages = await prisma.message.findMany({
+    take: 100, orderBy: { createdAt: 'asc' },
+    include: { sender: { select: { id: true, name: true, email: true } }, reactions: true }
+  })
+  res.json(messages)
+})
+
+// ─── ANNOUNCEMENTS ─────────────────────────────────────────────────────────
+
+app.get('/announcements', authMiddleware, async (_req: AuthRequest, res: any) => {
+  const items = await prisma.announcement.findMany({ where: { pinned: true }, orderBy: { createdAt: 'desc' }, take: 3 })
+  res.json(items)
+})
+
+app.post('/announcements', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { title, body } = req.body
+  if (!title || !body) return res.status(400).json({ error: 'title and body required' })
+  const item = await prisma.announcement.create({ data: { title, body, pinned: true } })
+  io.emit('announcement:new', item)
+  res.json(item)
+})
+
+// ─── NOTIFICATIONS ─────────────────────────────────────────────────────────
+
+app.get('/notifications', authMiddleware, async (req: AuthRequest, res: any) => {
+  const items = await prisma.notification.findMany({ where: { userId: req.user?.sub }, orderBy: { createdAt: 'desc' }, take: 20 })
+  res.json(items)
+})
+
+app.patch('/notifications/read-all', authMiddleware, async (req: AuthRequest, res: any) => {
+  await prisma.notification.updateMany({ where: { userId: req.user?.sub, read: false }, data: { read: true } })
+  res.json({ ok: true })
+})
+
+// ─── SOCKET.IO ──────────────────────────────────────────────────────────────
+
+const onlineUsers = new Map<string, string>()
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token
+  if (!token) return next(new Error('no token'))
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as any
+    socket.data.userId = payload.sub
+    next()
+  } catch { next(new Error('invalid token')) }
+})
+
+io.on('connection', (socket) => {
+  const userId = socket.data.userId
+  onlineUsers.set(socket.id, userId)
+  io.emit('users:online', Array.from(new Set(onlineUsers.values())))
+
+  socket.on('message:send', async (data: { body: string }) => {
+    if (!data.body?.trim()) return
+    const message = await prisma.message.create({
+      data: { senderId: userId, body: data.body.trim() },
+      include: { sender: { select: { id: true, name: true, email: true } }, reactions: true }
+    })
+    io.emit('message:new', message)
+  })
+
+  socket.on('reaction:add', async (data: { messageId: string; emoji: string }) => {
+    try {
+      const existing = await prisma.reaction.findUnique({ where: { messageId_userId_emoji: { messageId: data.messageId, userId, emoji: data.emoji } } })
+      if (existing) await prisma.reaction.delete({ where: { id: existing.id } })
+      else await prisma.reaction.create({ data: { messageId: data.messageId, userId, emoji: data.emoji } })
+      const reactions = await prisma.reaction.findMany({ where: { messageId: data.messageId } })
+      io.emit('reaction:update', { messageId: data.messageId, reactions })
+    } catch {}
+  })
+
+  socket.on('disconnect', () => {
+    onlineUsers.delete(socket.id)
+    io.emit('users:online', Array.from(new Set(onlineUsers.values())))
+  })
+})
+
+// ─── START ──────────────────────────────────────────────────────────────────
+
+server.listen(PORT, () => console.log(`🐸 Bullfrog Bash backend on :${PORT}`))

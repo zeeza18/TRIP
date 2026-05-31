@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  phone     String?
+  boozePref String?
+  role      Role     @default(USER)
+  onboarded Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expenses       Expense[]       @relation("paidBy")
+  expenseSplits  ExpenseSplit[]
+  messages       Message[]
+  reactions      Reaction[]
+  participations Participation[]
+  notifications  Notification[]
+}
+
+model ApprovedEmail {
+  id      String  @id @default(cuid())
+  email   String  @unique
+  addedBy String?
+  invited Boolean @default(false)
+}
+
+model TripConfig {
+  id            String @id @default(cuid())
+  poolPerPerson Float  @default(0)
+}
+
+model Expense {
+  id        String   @id @default(cuid())
+  name      String
+  amount    Float
+  category  String
+  paidById  String
+  paidBy    User     @relation("paidBy", fields: [paidById], references: [id])
+  splitAll  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  splits ExpenseSplit[]
+}
+
+model ExpenseSplit {
+  id        String  @id @default(cuid())
+  expenseId String
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  share     Float
+
+  @@unique([expenseId, userId])
+}
+
+model Activity {
+  id        String    @id @default(cuid())
+  name      String
+  estPrice  Float     @default(0)
+  icon      String?
+  isDone    Boolean   @default(false)
+  doneAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  participations Participation[]
+}
+
+model Participation {
+  id         String   @id @default(cuid())
+  activityId String
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  joinedAt   DateTime @default(now())
+
+  @@unique([activityId, userId])
+}
+
+model ItineraryItem {
+  id        String   @id @default(cuid())
+  date      String
+  time      String?
+  title     String
+  info      String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  senderId  String
+  sender    User     @relation(fields: [senderId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+
+  reactions Reaction[]
+}
+
+model Reaction {
+  id        String  @id @default(cuid())
+  messageId String
+  message   Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+  emoji     String
+
+  @@unique([messageId, userId, emoji])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  pinned    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

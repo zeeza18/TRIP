@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary:    #1F6F4A;
+  --color-secondary:  #F4A261;
+  --color-accent:     #2A9D8F;
+  --color-background: #F8F5EC;
+  --color-dark:       #18230F;
+  --color-danger:     #E76F51;
+  --color-muted:      #9CA3AF;
+  --font-family-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+body { background-color: #F8F5EC; font-family: 'Inter', sans-serif; }
