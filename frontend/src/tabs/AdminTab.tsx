@@ -394,7 +394,7 @@ export default function AdminTab() {
                       <div key={u.id}
                         className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all
                           ${isPending ? 'bg-amber-50 border border-amber-200' : isApproved ? 'bg-primary/5' : 'hover:bg-gray-50'}
-                          ${a.isDone ? 'opacity-60' : ''}`}>
+                          ${a.isDone && !isPending ? 'opacity-60' : ''}`}>
                         <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                           {(u.name || u.email)[0].toUpperCase()}
                         </div>
@@ -405,8 +405,8 @@ export default function AdminTab() {
                         {isApproved && a.estPrice > 0 && (
                           <span className="text-xs font-semibold text-secondary shrink-0">${count * a.estPrice}</span>
                         )}
-                        {/* Controls */}
-                        {!a.isDone && isPending && (
+                        {/* Controls — pending can always be approved even on done activities */}
+                        {isPending && (
                           <button
                             disabled={toggling === addKey}
                             onClick={() => addUserActivity(a.id, u.id)}
