@@ -350,17 +350,18 @@ app.get('/activities', authMiddleware, async (req: AuthRequest, res: any) => {
 })
 
 app.post('/activities', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
-  const { name, estPrice, icon } = req.body
+  const { name, estPrice, icon, description } = req.body
   if (!name) return res.status(400).json({ error: 'name required' })
-  const activity = await prisma.activity.create({ data: { name, estPrice: estPrice || 0, icon } })
+  const activity = await prisma.activity.create({ data: { name, estPrice: estPrice || 0, icon, description: description || null } })
   res.json(activity)
 })
 
 app.patch('/activities/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
-  const { name, estPrice, isDone } = req.body
+  const { name, estPrice, isDone, description } = req.body
   const data: any = {}
   if (name !== undefined) data.name = name
   if (estPrice !== undefined) data.estPrice = estPrice
+  if (description !== undefined) data.description = description
   if (isDone !== undefined) { data.isDone = isDone; if (isDone) data.doneAt = new Date() }
   const activity = await prisma.activity.update({ where: { id: req.params.id }, data })
   if (isDone && activity.estPrice > 0) {

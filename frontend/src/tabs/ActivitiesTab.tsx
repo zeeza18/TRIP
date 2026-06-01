@@ -9,6 +9,7 @@ interface Activity {
   name: string
   estPrice: number
   icon: string | null
+  description: string | null
   isDone: boolean
   participantCount: number
   isParticipating: boolean
@@ -25,7 +26,7 @@ export default function ActivitiesTab() {
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', estPrice: '', icon: '' })
+  const [form, setForm] = useState({ name: '', estPrice: '', icon: '', description: '' })
 
   async function load() {
     try {
@@ -61,10 +62,10 @@ export default function ActivitiesTab() {
   async function addActivity() {
     if (!form.name) { toast.error('Name is required'); return }
     try {
-      await api.post('/activities', { name: form.name, estPrice: parseFloat(form.estPrice) || 0, icon: form.icon || null })
+      await api.post('/activities', { name: form.name, estPrice: parseFloat(form.estPrice) || 0, icon: form.icon || null, description: form.description || null })
       toast.success('Activity added!')
       setShowForm(false)
-      setForm({ name: '', estPrice: '', icon: '' })
+      setForm({ name: '', estPrice: '', icon: '', description: '' })
       load()
     } catch { toast.error('Failed to add') }
   }
@@ -101,6 +102,9 @@ export default function ActivitiesTab() {
               placeholder="Price per person (0 = free)"
               className="w-full pl-7 pr-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
+          <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+            placeholder="Additional details (optional)" rows={2}
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
           <button onClick={addActivity} className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm">Add Activity</button>
         </div>
       )}
@@ -121,6 +125,9 @@ export default function ActivitiesTab() {
                   </span>
                 </div>
                 <p className="text-xs text-muted mt-1">{a.participantCount} {a.participantCount === 1 ? 'person' : 'people'} in</p>
+                {a.description && (
+                  <p className="text-xs text-muted mt-1 leading-relaxed">{a.description}</p>
+                )}
                 {a.isParticipating && a.estPrice > 0 && !a.isDone && (
                   <p className="text-xs text-secondary font-semibold mt-0.5">+${a.estPrice} pending on your bill</p>
                 )}

@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 interface ApprovedEmail { id: string; email: string; invited: boolean }
 interface UserRow { id: string; email: string; name: string | null; phone: string | null; boozePref: string | null; onboarded: boolean; idProof: string | null; role: string }
 interface BillingSummary { id: string; name: string | null; email: string; totalCharged: number; poolPerPerson: number; balance: number }
-interface ActivityRow { id: string; name: string; estPrice: number; icon: string | null; isDone: boolean; participants: { userId: string; name: string | null; email: string }[] }
+interface ActivityRow { id: string; name: string; estPrice: number; icon: string | null; description: string | null; isDone: boolean; participants: { userId: string; name: string | null; email: string }[] }
 
 const CATEGORIES = ['Accommodation', 'Transport', 'Food', 'Activity', 'Drinks', 'Other']
 
@@ -24,6 +24,8 @@ export default function AdminTab() {
   const [sending, setSending] = useState(false)
   const [section, setSection] = useState<'crew' | 'activities' | 'expenses' | 'announce'>('crew')
   const [toggling, setToggling] = useState<string | null>(null)
+  const [showAddActivity, setShowAddActivity] = useState(false)
+  const [activityForm, setActivityForm] = useState({ icon: '', name: '', estPrice: '', description: '' })
 
   async function loadData() {
     try {
@@ -100,6 +102,22 @@ export default function AdminTab() {
       setNotifForm({ subject: '', body: '' })
     } catch { toast.error('Failed') }
     finally { setSending(false) }
+  }
+
+  async function addActivity() {
+    if (!activityForm.name.trim()) { toast.error('Activity name required'); return }
+    try {
+      await api.post('/activities', {
+        name: activityForm.name.trim(),
+        estPrice: parseFloat(activityForm.estPrice) || 0,
+        icon: activityForm.icon.trim() || null,
+        description: activityForm.description.trim() || null,
+      })
+      toast.success('Activity added!')
+      setActivityForm({ icon: '', name: '', estPrice: '', description: '' })
+      setShowAddActivity(false)
+      loadData()
+    } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed') }
   }
 
   // Show only onboarded users, deduplicated by email (avoid duplicate rows)
@@ -282,7 +300,53 @@ export default function AdminTab() {
       {/* ── ACTIVITIES ── */}
       {section === 'activities' && (
         <div className="space-y-4">
-          <p className="text-xs text-muted">Check crew into activities. Cost adds to their bill when you mark done.</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted">Check crew in. Cost bills when you mark done.</p>
+            <button onClick={() => setShowAddActivity(v => !v)}
+              className="text-sm text-primary font-semibold">
+              {showAddActivity ? 'Cancel' : '+ Add'}
+            </button>
+          </div>
+
+          {showAddActivity && (
+            <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+              <p className="text-xs font-semibold text-dark">New activity</p>
+              <input
+                value={activityForm.icon}
+                onChange={e => setActivityForm(f => ({ ...f, icon: e.target.value }))}
+                placeholder="Emoji (e.g. 🛶)"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <input
+                value={activityForm.name}
+                onChange={e => setActivityForm(f => ({ ...f, name: e.target.value }))}
+                placeholder="Activity name *"
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm">$</span>
+                <input
+                  type="number"
+                  value={activityForm.estPrice}
+                  onChange={e => setActivityForm(f => ({ ...f, estPrice: e.target.value }))}
+                  placeholder="Price per person (0 = free)"
+                  className="w-full pl-7 pr-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <textarea
+                value={activityForm.description}
+                onChange={e => setActivityForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="Additional details (optional)"
+                rows={2}
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+              />
+              <button onClick={addActivity}
+                className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm">
+                Add Activity
+              </button>
+            </div>
+          )}
+
           {activities.length === 0 && (
             <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
               <p className="text-muted text-sm mb-2">No activities yet.</p>

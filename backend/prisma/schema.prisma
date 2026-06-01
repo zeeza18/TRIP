@@ -71,13 +71,14 @@ model ExpenseSplit {
 }
 
 model Activity {
-  id        String    @id @default(cuid())
-  name      String
-  estPrice  Float     @default(0)
-  icon      String?
-  isDone    Boolean   @default(false)
-  doneAt    DateTime?
-  createdAt DateTime  @default(now())
+  id          String    @id @default(cuid())
+  name        String
+  estPrice    Float     @default(0)
+  icon        String?
+  description String?
+  isDone      Boolean   @default(false)
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
 
   participations Participation[]
 }
