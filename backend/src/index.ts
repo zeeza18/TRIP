@@ -290,14 +290,14 @@ app.post('/admin/seed', authMiddleware, adminOnly, async (_req: AuthRequest, res
 
 app.get('/config', authMiddleware, async (_req: AuthRequest, res: any) => {
   let config = await prisma.tripConfig.findFirst()
-  if (!config) config = await prisma.tripConfig.create({ data: { poolPerPerson: 0 } })
+  if (!config) config = await prisma.tripConfig.create({ data: { poolPerPerson: 100 } })
   res.json(config)
 })
 
 app.patch('/config', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
   const { poolPerPerson } = req.body
   let config = await prisma.tripConfig.findFirst()
-  if (!config) config = await prisma.tripConfig.create({ data: { poolPerPerson: poolPerPerson || 0 } })
+  if (!config) config = await prisma.tripConfig.create({ data: { poolPerPerson: poolPerPerson ?? 100 } })
   else config = await prisma.tripConfig.update({ where: { id: config.id }, data: { poolPerPerson } })
   res.json(config)
 })
@@ -507,15 +507,15 @@ app.get('/billing/me', authMiddleware, async (req: AuthRequest, res: any) => {
   const total = splits.reduce((sum, s) => sum + s.share, 0)
   const config = await prisma.tripConfig.findFirst()
   const participations = await prisma.participation.findMany({
-    where: { userId, activity: { isDone: false } },
+    where: { userId, status: 'APPROVED', activity: { isDone: false } },
     include: { activity: { select: { id: true, name: true, estPrice: true, icon: true } } }
   })
-  const pendingActivityCost = participations.reduce((sum, p) => sum + p.activity.estPrice, 0)
+  const pendingActivityCost = participations.reduce((sum, p) => sum + p.activity.estPrice * p.count, 0)
   res.json({
     total: +total.toFixed(2),
     splits,
-    poolPerPerson: config?.poolPerPerson || 0,
-    pendingActivities: participations.map(p => p.activity),
+    poolPerPerson: config?.poolPerPerson ?? 100,
+    pendingActivities: participations.map(p => ({ ...p.activity, count: p.count, subtotal: p.activity.estPrice * p.count })),
     pendingActivityCost: +pendingActivityCost.toFixed(2)
   })
 })

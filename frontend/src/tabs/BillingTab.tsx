@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { ActivityIcon, TransportIcon, FoodIcon, DrinksIcon, OtherIcon } from '../components/Icons'
+import { ActivityIcon, TransportIcon, FoodIcon, DrinksIcon, OtherIcon, WalletIcon, BillingIcon } from '../components/Icons'
 import toast from 'react-hot-toast'
 import { api } from '../api'
 
@@ -9,7 +9,7 @@ interface Split {
   expense: { name: string; category: string; createdAt: string }
 }
 
-interface PendingActivity { id: string; name: string; estPrice: number; icon: string | null }
+interface PendingActivity { id: string; name: string; estPrice: number; icon: string | null; count: number; subtotal: number }
 
 interface BillingData {
   total: number
@@ -73,7 +73,7 @@ export default function BillingTab() {
             <p className="text-xs opacity-70 mb-0.5">Trip budget</p>
             <p className="text-3xl font-bold">${data.poolPerPerson.toFixed(2)}</p>
           </div>
-          <div className="text-3xl opacity-80">👛</div>
+          <WalletIcon className="opacity-80 w-8 h-8" />
         </div>
         {/* Progress bar */}
         {hasPool && (
@@ -112,8 +112,11 @@ export default function BillingTab() {
           <div className="space-y-1.5">
             {data.pendingActivities.map(a => (
               <div key={a.id} className="flex items-center justify-between">
-                <span className="text-sm text-dark">{a.name}</span>
-                <span className="text-sm font-semibold text-secondary">+${a.estPrice.toFixed(2)}</span>
+                <div>
+                  <span className="text-sm text-dark">{a.name}</span>
+                  {a.count > 1 && <span className="text-xs text-muted ml-1">×{a.count}</span>}
+                </div>
+                <span className="text-sm font-semibold text-secondary">+${a.subtotal.toFixed(2)}</span>
               </div>
             ))}
           </div>
@@ -147,7 +150,9 @@ export default function BillingTab() {
         </div>
       ) : (
         <div className="text-center py-12">
-          <div className="text-5xl mb-3">👛</div>
+          <div className="flex justify-center mb-3 text-gray-300">
+            <BillingIcon className="w-12 h-12" />
+          </div>
           <p className="text-muted text-sm">No purchases yet.</p>
           <p className="text-muted text-xs mt-1">Your spending history will appear here.</p>
         </div>

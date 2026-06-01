@@ -63,4 +63,12 @@ export const OtherIcon = ({ className = '' }: { className?: string }) => (
   </svg>
 )
 
+export const WalletIcon = ({ className = '' }: { className?: string }) => (
+  <svg className={className} width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+    <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+    <path d="M2 10h20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <circle cx="17" cy="15" r="1.5" fill="currentColor" />
+  </svg>
+)
+
 export default null
