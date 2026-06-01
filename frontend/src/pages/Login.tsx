@@ -182,21 +182,23 @@ export default function Login() {
               <g className="svg-frog" filter="url(#fDrop)">
 
                 {/* === BACK LEGS (drawn first = behind body) === */}
-                {/* Back left: thigh → shin */}
-                <line x1="64" y1="128" x2="40" y2="146" stroke="#27b567" strokeWidth="13" strokeLinecap="round"/>
-                <line x1="40" y1="146" x2="24" y2="150" stroke="#27b567" strokeWidth="11" strokeLinecap="round"/>
-                {/* Left toes */}
-                <circle cx="15" cy="152" r="5" fill="#1c8a50"/>
-                <circle cx="23" cy="155" r="5" fill="#1c8a50"/>
-                <circle cx="31" cy="154" r="5" fill="#1c8a50"/>
+                {/* Back left: single smooth fat curve thigh→shin */}
+                <path d="M 63,130 C 50,132 36,142 26,152" stroke="#27b567" strokeWidth="17" fill="none" strokeLinecap="round"/>
+                {/* Left knee cap */}
+                <circle cx="40" cy="140" r="9" fill="#22a85c"/>
+                {/* Left webbed toes */}
+                <ellipse cx="14" cy="156" rx="7" ry="4.5" fill="#1c8a50" transform="rotate(-25,14,156)"/>
+                <ellipse cx="22" cy="159" rx="7" ry="4.5" fill="#1c8a50" transform="rotate(-5,22,159)"/>
+                <ellipse cx="30" cy="157" rx="7" ry="4.5" fill="#1c8a50" transform="rotate(18,30,157)"/>
 
-                {/* Back right: thigh → shin */}
-                <line x1="152" y1="128" x2="176" y2="146" stroke="#27b567" strokeWidth="13" strokeLinecap="round"/>
-                <line x1="176" y1="146" x2="192" y2="150" stroke="#27b567" strokeWidth="11" strokeLinecap="round"/>
-                {/* Right toes */}
-                <circle cx="185" cy="154" r="5" fill="#1c8a50"/>
-                <circle cx="193" cy="155" r="5" fill="#1c8a50"/>
-                <circle cx="201" cy="152" r="5" fill="#1c8a50"/>
+                {/* Back right: smooth fat curve */}
+                <path d="M 153,130 C 166,132 180,142 190,152" stroke="#27b567" strokeWidth="17" fill="none" strokeLinecap="round"/>
+                {/* Right knee cap */}
+                <circle cx="176" cy="140" r="9" fill="#22a85c"/>
+                {/* Right webbed toes */}
+                <ellipse cx="186" cy="157" rx="7" ry="4.5" fill="#1c8a50" transform="rotate(-18,186,157)"/>
+                <ellipse cx="194" cy="159" rx="7" ry="4.5" fill="#1c8a50" transform="rotate(5,194,159)"/>
+                <ellipse cx="202" cy="156" rx="7" ry="4.5" fill="#1c8a50" transform="rotate(25,202,156)"/>
 
                 {/* === BODY === */}
                 <ellipse cx="108" cy="118" rx="50" ry="42" fill="url(#skinGrad)"/>
@@ -206,17 +208,17 @@ export default function Login() {
                 <ellipse cx="108" cy="82" rx="40" ry="30" fill="url(#skinGrad)"/>
 
                 {/* === FRONT LEGS === */}
-                {/* Left front */}
-                <line x1="70" y1="110" x2="54" y2="126" stroke="#27b567" strokeWidth="10" strokeLinecap="round"/>
-                <circle cx="47" cy="130" r="4" fill="#1c8a50"/>
-                <circle cx="54" cy="133" r="4" fill="#1c8a50"/>
-                <circle cx="61" cy="131" r="4" fill="#1c8a50"/>
+                {/* Left front arm: gentle curve */}
+                <path d="M 70,112 C 62,118 54,122 50,128" stroke="#27b567" strokeWidth="12" fill="none" strokeLinecap="round"/>
+                <ellipse cx="44" cy="131" rx="5" ry="3.5" fill="#1c8a50" transform="rotate(-20,44,131)"/>
+                <ellipse cx="51" cy="134" rx="5" ry="3.5" fill="#1c8a50" transform="rotate(0,51,134)"/>
+                <ellipse cx="58" cy="132" rx="5" ry="3.5" fill="#1c8a50" transform="rotate(20,58,132)"/>
 
-                {/* Right front */}
-                <line x1="146" y1="110" x2="162" y2="126" stroke="#27b567" strokeWidth="10" strokeLinecap="round"/>
-                <circle cx="155" cy="131" r="4" fill="#1c8a50"/>
-                <circle cx="162" cy="133" r="4" fill="#1c8a50"/>
-                <circle cx="169" cy="130" r="4" fill="#1c8a50"/>
+                {/* Right front arm: gentle curve */}
+                <path d="M 146,112 C 154,118 162,122 166,128" stroke="#27b567" strokeWidth="12" fill="none" strokeLinecap="round"/>
+                <ellipse cx="158" cy="132" rx="5" ry="3.5" fill="#1c8a50" transform="rotate(-20,158,132)"/>
+                <ellipse cx="165" cy="134" rx="5" ry="3.5" fill="#1c8a50" transform="rotate(0,165,134)"/>
+                <ellipse cx="172" cy="131" rx="5" ry="3.5" fill="#1c8a50" transform="rotate(20,172,131)"/>
 
                 {/* === NOSTRILS === */}
                 <circle cx="101" cy="90" r="3" fill="#145a33" opacity="0.65"/>
