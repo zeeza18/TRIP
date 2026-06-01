@@ -846,7 +846,55 @@ async function ensureAdmin() {
   } catch (e) { console.error('Admin seed failed:', e) }
 }
 
+// ─── ITINERARY REMINDER SCHEDULER ────────────────────────────────────────────
+async function checkUpcomingItinerary() {
+  try {
+    const now = new Date()
+    const soon = new Date(now.getTime() + 60 * 60 * 1000) // 60 min from now
+    const items = await prisma.itineraryItem.findMany({ where: { notified: false } })
+    for (const item of items) {
+      const m = item.time?.match(/^(\d{1,2}):(\d{2})$/)
+      if (!m) continue
+      const itemDate = new Date(`${item.date}T${item.time}:00`)
+      if (itemDate > now && itemDate <= soon) {
+        await prisma.itineraryItem.update({ where: { id: item.id }, data: { notified: true } })
+        const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, email: true } })
+        const h = parseInt(m[1]), min = m[2]
+        const h12 = h % 12 || 12
+        const timeLabel = `${h12}:${min} ${h >= 12 ? 'PM' : 'AM'}`
+        for (const user of users) {
+          try {
+            await resend.emails.send({
+              from: FROM_EMAIL, to: [user.email],
+              subject: `⏰ Coming up: ${item.title} at ${timeLabel}`,
+              html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+                <div style="background:#1F6F4A;padding:32px;text-align:center">
+                  <div style="font-size:40px;margin-bottom:8px">⏰</div>
+                  <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">Happening soon!</h1>
+                </div>
+                <div style="padding:24px 32px">
+                  <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 4px">${item.title}</p>
+                  <p style="color:#1F6F4A;font-size:13px;font-weight:600;margin:0 0 12px">Today at ${timeLabel}</p>
+                  ${item.info ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 12px">${item.info}</p>` : ''}
+                  <p style="color:#6B7280;font-size:13px;margin:0">Check the app for full details.</p>
+                </div>
+                <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
+                  <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+                </div>
+              </div>`
+            })
+            await prisma.notification.create({ data: { userId: user.id, title: `Coming up: ${item.title}`, body: `Today at ${timeLabel}` } })
+          } catch {}
+        }
+        io.emit('notification:new', { title: `Coming up: ${item.title}`, body: `Today at ${timeLabel}` })
+      }
+    }
+  } catch {}
+}
+
 server.listen(PORT, async () => {
   console.log(`🐸 Grazuasion Party backend on :${PORT}`)
   await ensureAdmin()
+  // Check every 30 minutes for items approaching in the next 60 min
+  setInterval(checkUpcomingItinerary, 30 * 60 * 1000)
 })

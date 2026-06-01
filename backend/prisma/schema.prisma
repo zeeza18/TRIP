@@ -103,6 +103,7 @@ model ItineraryItem {
   title     String
   info      String?
   order     Int      @default(0)
+  notified  Boolean  @default(false)
   createdAt DateTime @default(now())
 }
 
