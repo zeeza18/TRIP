@@ -28,6 +28,7 @@ export default function Login() {
     <div className="h-dvh bg-background flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm flex flex-col items-center">
         <div className="text-center mb-5">
+          <div className="text-7xl mb-3">🐸</div>
           <h1 className="w-full whitespace-nowrap text-[clamp(1.25rem,6vw,2.35rem)] font-black leading-none text-dark">
             Bullfrog <span className="text-primary">Grazuasion</span> Party
           </h1>
