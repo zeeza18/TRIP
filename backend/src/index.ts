@@ -8,7 +8,7 @@ import jwt from 'jsonwebtoken'
 import crypto from 'crypto'
 import prisma from './prismaClient'
 import { authMiddleware, adminOnly, AuthRequest } from './middleware'
-import { Resend } from 'resend'
+import { sendEmail, sendBulkEmail } from './mailer'
 
 dotenv.config()
 
@@ -22,8 +22,6 @@ app.use(express.json({ limit: '10mb' }))
 const PORT = process.env.PORT || 4000
 const JWT_SECRET = process.env.JWT_SECRET || 'change_me'
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
-const FROM_EMAIL = process.env.FROM_EMAIL || 'Grazuasion Party <onboarding@resend.dev>'
-const resend = new Resend(process.env.RESEND_API_KEY || '')
 
 // ─── AUTH ──────────────────────────────────────────────────────────────────
 
@@ -65,15 +63,8 @@ app.post('/auth/register', async (req: any, res: any) => {
   const hashed = await bcrypt.hash(password, 10)
   const user = await prisma.user.create({ data: { email, password: hashed, name, phone, boozePref, idProof, onboarded: true } })
   const admins = await prisma.user.findMany({ where: { role: 'ADMIN' } })
-  for (const admin of admins) {
-    try {
-      await resend.emails.send({
-        from: FROM_EMAIL, to: [admin.email],
-        subject: `🐸 ${name || email} just joined the Grazuasion Party!`,
-        html: `<p><strong>${name || email}</strong> has set up their account!</p>`
-      })
-    } catch {}
-  }
+  await sendBulkEmail(admins, `🐸 ${name || email} just joined the Grazuasion Party!`,
+    () => `<p><strong>${name || email}</strong> has set up their account!</p>`)
   res.json({ id: user.id, email: user.email, name: user.name })
 })
 
@@ -86,11 +77,7 @@ app.post('/auth/forgot-password', async (req: any, res: any) => {
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
   await prisma.passwordResetToken.create({ data: { email, token, expiresAt } })
   const resetUrl = `${FRONTEND_URL}/reset-password?token=${token}`
-  try {
-    await resend.emails.send({
-      from: FROM_EMAIL, to: [email],
-      subject: 'Reset your Grazuasion Party password',
-      html: `
+  await sendEmail(email, 'Reset your Grazuasion Party password', `
         <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
           <div style="background:#1F6F4A;padding:44px 36px;text-align:center">
             <div style="font-size:52px;margin-bottom:10px">🐸</div>
@@ -111,9 +98,7 @@ app.post('/auth/forgot-password', async (req: any, res: any) => {
           <div style="background:#F9FAFB;padding:20px 36px;text-align:center;border-top:1px solid #E5E7EB">
             <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16 - 18, 2026 · Bullfrog Lake, IL</div>
           </div>
-        </div>`
-    })
-  } catch (err) { console.warn('Resend error', err) }
+        </div>`)
   res.json({ ok: true })
 })
 
@@ -202,11 +187,7 @@ app.post('/admin/send-invite', authMiddleware, adminOnly, async (req: AuthReques
   if (!email) return res.status(400).json({ error: 'email required' })
   let approved = await prisma.approvedEmail.findUnique({ where: { email } })
   if (!approved) approved = await prisma.approvedEmail.create({ data: { email, addedBy: req.user?.sub } })
-  try {
-    await resend.emails.send({
-      from: FROM_EMAIL, to: [email],
-      subject: "You're on the list. Their Educasion is Grazuasion 🐸",
-      html: `
+  await sendEmail(email, "You're on the list. Their Educasion is Grazuasion 🐸", `
         <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
           <div style="background:#1F6F4A;padding:44px 36px;text-align:center">
             <div style="font-size:52px;margin-bottom:10px">🐸</div>
@@ -232,10 +213,8 @@ app.post('/admin/send-invite', authMiddleware, adminOnly, async (req: AuthReques
           <div style="background:#F9FAFB;padding:20px 36px;text-align:center;border-top:1px solid #E5E7EB">
             <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16 - 18, 2026 · Bullfrog Lake, IL</div>
           </div>
-        </div>`
-    })
-    await prisma.approvedEmail.update({ where: { email }, data: { invited: true } })
-  } catch (err) { console.warn('Resend error', err) }
+        </div>`)
+  await prisma.approvedEmail.update({ where: { email }, data: { invited: true } })
   res.json({ ok: true })
 })
 
@@ -243,21 +222,16 @@ app.post('/admin/notify-all', authMiddleware, adminOnly, async (req: AuthRequest
   const { subject, body } = req.body
   if (!subject || !body) return res.status(400).json({ error: 'subject and body required' })
   const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, email: true } })
-  for (const user of users) {
-    try {
-      await resend.emails.send({
-        from: FROM_EMAIL, to: [user.email], subject,
-        html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-          <h2 style="color:#1F6F4A">${subject}</h2><p>${body}</p>
-          <p style="color:#9CA3AF;font-size:12px">Grazuasion Party 🐸 — June 16–18</p></div>`
-      })
-      await prisma.notification.create({ data: { userId: user.id, title: subject, body } })
-    } catch {}
-  }
+  const sent = await sendBulkEmail(users, subject,
+    () => `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
+      <h2 style="color:#1F6F4A">${subject}</h2><p>${body}</p>
+      <p style="color:#9CA3AF;font-size:12px">Grazuasion Party 🐸 — June 16–18</p></div>`)
+  for (const user of users)
+    await prisma.notification.create({ data: { userId: user.id, title: subject, body } })
   const announcement = await prisma.announcement.create({ data: { title: subject, body, pinned: true } })
   io.emit('announcement:new', announcement)
   io.emit('notification:new', { title: subject, body })
-  res.json({ ok: true, sent: users.length })
+  res.json({ ok: true, sent })
 })
 
 app.post('/admin/seed', authMiddleware, adminOnly, async (_req: AuthRequest, res: any) => {
@@ -320,30 +294,24 @@ app.post('/itinerary', authMiddleware, adminOnly, async (req: AuthRequest, res: 
   try {
     const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, email: true } })
     const timeLabel = time ? ` at ${time}` : ''
-    for (const user of users) {
-      try {
-        await resend.emails.send({
-          from: FROM_EMAIL, to: [user.email],
-          subject: `📋 New itinerary item: ${title}`,
-          html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
-            <div style="background:#1F6F4A;padding:32px;text-align:center">
-              <div style="font-size:40px;margin-bottom:8px">📋</div>
-              <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">Itinerary Updated</h1>
-            </div>
-            <div style="padding:24px 32px">
-              <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 4px">${title}</p>
-              ${timeLabel ? `<p style="color:#1F6F4A;font-size:13px;font-weight:600;margin:0 0 8px">${timeLabel}</p>` : ''}
-              ${info ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 12px">${info}</p>` : ''}
-              <p style="color:#6B7280;font-size:13px;margin:0">Check the app for the full schedule.</p>
-            </div>
-            <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
-              <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
-            </div>
-          </div>`
-        })
-        await prisma.notification.create({ data: { userId: user.id, title: `New: ${title}`, body: `Added to the itinerary${timeLabel}` } })
-      } catch {}
-    }
+    await sendBulkEmail(users, `📋 New itinerary item: ${title}`,
+      () => `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+        <div style="background:#1F6F4A;padding:32px;text-align:center">
+          <div style="font-size:40px;margin-bottom:8px">📋</div>
+          <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">Itinerary Updated</h1>
+        </div>
+        <div style="padding:24px 32px">
+          <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 4px">${title}</p>
+          ${timeLabel ? `<p style="color:#1F6F4A;font-size:13px;font-weight:600;margin:0 0 8px">${timeLabel}</p>` : ''}
+          ${info ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 12px">${info}</p>` : ''}
+          <p style="color:#6B7280;font-size:13px;margin:0">Check the app for the full schedule.</p>
+        </div>
+        <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
+          <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+        </div>
+      </div>`)
+    for (const user of users)
+      await prisma.notification.create({ data: { userId: user.id, title: `New: ${title}`, body: `Added to the itinerary${timeLabel}` } })
   } catch {}
 })
 
@@ -394,30 +362,24 @@ app.post('/activities', authMiddleware, adminOnly, async (req: AuthRequest, res:
   try {
     const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, email: true } })
     const priceLabel = estPrice ? ` — $${estPrice}/spot` : ''
-    for (const user of users) {
-      try {
-        await resend.emails.send({
-          from: FROM_EMAIL, to: [user.email],
-          subject: `${icon || '🎉'} New activity: ${name}`,
-          html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
-            <div style="background:#1F6F4A;padding:32px;text-align:center">
-              <div style="font-size:40px;margin-bottom:8px">${icon || '🎉'}</div>
-              <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">New Activity Added</h1>
-            </div>
-            <div style="padding:24px 32px">
-              <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 4px">${name}</p>
-              ${priceLabel ? `<p style="color:#1F6F4A;font-size:13px;font-weight:600;margin:0 0 8px">${priceLabel}</p>` : ''}
-              ${description ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 12px">${description}</p>` : ''}
-              <p style="color:#6B7280;font-size:13px;margin:0">Open the app → Activities to request a spot.</p>
-            </div>
-            <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
-              <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
-            </div>
-          </div>`
-        })
-        await prisma.notification.create({ data: { userId: user.id, title: `New activity: ${name}`, body: `${description || ''}${priceLabel}`.trim() } })
-      } catch {}
-    }
+    await sendBulkEmail(users, `${icon || '🎉'} New activity: ${name}`,
+      () => `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+        <div style="background:#1F6F4A;padding:32px;text-align:center">
+          <div style="font-size:40px;margin-bottom:8px">${icon || '🎉'}</div>
+          <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">New Activity Added</h1>
+        </div>
+        <div style="padding:24px 32px">
+          <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 4px">${name}</p>
+          ${priceLabel ? `<p style="color:#1F6F4A;font-size:13px;font-weight:600;margin:0 0 8px">${priceLabel}</p>` : ''}
+          ${description ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 12px">${description}</p>` : ''}
+          <p style="color:#6B7280;font-size:13px;margin:0">Open the app → Activities to request a spot.</p>
+        </div>
+        <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
+          <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+        </div>
+      </div>`)
+    for (const user of users)
+      await prisma.notification.create({ data: { userId: user.id, title: `New activity: ${name}`, body: `${description || ''}${priceLabel}`.trim() } })
   } catch {}
 })
 
@@ -475,27 +437,22 @@ app.post('/admin/activities/:id/add-user/:userId', authMiddleware, adminOnly, as
       await prisma.notification.create({ data: { userId, title: 'Request approved!', body: `You're in for ${actName}${price ? ` — $${price} added when done` : ''}` } })
       io.emit('billing:update', {})
       if (targetUser) {
-        try {
-          await resend.emails.send({
-            from: FROM_EMAIL, to: [targetUser.email],
-            subject: `You're in! 🐸 ${actName} is confirmed`,
-            html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
-              <div style="background:#1F6F4A;padding:36px;text-align:center">
-                <div style="font-size:48px;margin-bottom:8px">🐸</div>
-                <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0">You're officially in!</h1>
-              </div>
-              <div style="padding:28px 32px">
-                <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 8px">Hey ${targetUser.name || targetUser.email.split('@')[0]}!</p>
-                <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px">Your request for <strong>${actName}</strong> has been approved by the admin. You're locked in — get pumped! 🎉</p>
-                ${price ? `<div style="background:#F0FDF4;border-left:4px solid #1F6F4A;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px"><p style="color:#1F6F4A;font-weight:700;margin:0">Cost: $${price}/spot</p><p style="color:#6B7280;font-size:13px;margin:4px 0 0">Added to your tab when the activity is marked done.</p></div>` : ''}
-                <p style="color:#6B7280;font-size:13px;line-height:1.6;margin:0">Check the app to see your updated wallet balance.</p>
-              </div>
-              <div style="background:#F9FAFB;padding:16px 32px;text-align:center;border-top:1px solid #E5E7EB">
-                <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
-              </div>
-            </div>`
-          })
-        } catch {}
+        await sendEmail(targetUser.email, `You're in! 🐸 ${actName} is confirmed`,
+          `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+            <div style="background:#1F6F4A;padding:36px;text-align:center">
+              <div style="font-size:48px;margin-bottom:8px">🐸</div>
+              <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0">You're officially in!</h1>
+            </div>
+            <div style="padding:28px 32px">
+              <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 8px">Hey ${targetUser.name || targetUser.email.split('@')[0]}!</p>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px">Your request for <strong>${actName}</strong> has been approved. You're locked in — get pumped! 🎉</p>
+              ${price ? `<div style="background:#F0FDF4;border-left:4px solid #1F6F4A;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px"><p style="color:#1F6F4A;font-weight:700;margin:0">Cost: $${price}/spot</p><p style="color:#6B7280;font-size:13px;margin:4px 0 0">Added to your tab when the activity is marked done.</p></div>` : ''}
+              <p style="color:#6B7280;font-size:13px;line-height:1.6;margin:0">Check the app to see your updated wallet balance.</p>
+            </div>
+            <div style="background:#F9FAFB;padding:16px 32px;text-align:center;border-top:1px solid #E5E7EB">
+              <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+            </div>
+          </div>`)
       }
       return res.json({ status: 'APPROVED', count: 1 })
     }
@@ -503,26 +460,21 @@ app.post('/admin/activities/:id/add-user/:userId', authMiddleware, adminOnly, as
     await prisma.notification.create({ data: { userId, title: 'Spot added!', body: `You now have ${updated.count} spot${updated.count > 1 ? 's' : ''} for ${actName}` } })
     io.emit('billing:update', {})
     if (targetUser) {
-      try {
-        await resend.emails.send({
-          from: FROM_EMAIL, to: [targetUser.email],
-          subject: `Extra spot confirmed! 🐸 ${actName}`,
-          html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
-            <div style="background:#1F6F4A;padding:36px;text-align:center">
-              <div style="font-size:48px;margin-bottom:8px">🐸</div>
-              <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0">Extra spot added!</h1>
-            </div>
-            <div style="padding:28px 32px">
-              <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 8px">Hey ${targetUser.name || targetUser.email.split('@')[0]}!</p>
-              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px">Your extra spot for <strong>${actName}</strong> has been added. You now have <strong>${updated.count} spot${updated.count > 1 ? 's' : ''}</strong>.</p>
-              ${price ? `<p style="color:#6B7280;font-size:13px">Total for this activity: <strong>$${updated.count * price}</strong> — added to your tab when done.</p>` : ''}
-            </div>
-            <div style="background:#F9FAFB;padding:16px 32px;text-align:center;border-top:1px solid #E5E7EB">
-              <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
-            </div>
-          </div>`
-        })
-      } catch {}
+      await sendEmail(targetUser.email, `Extra spot confirmed! 🐸 ${actName}`,
+        `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+          <div style="background:#1F6F4A;padding:36px;text-align:center">
+            <div style="font-size:48px;margin-bottom:8px">🐸</div>
+            <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0">Extra spot added!</h1>
+          </div>
+          <div style="padding:28px 32px">
+            <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 8px">Hey ${targetUser.name || targetUser.email.split('@')[0]}!</p>
+            <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px">Your extra spot for <strong>${actName}</strong> has been added. You now have <strong>${updated.count} spot${updated.count > 1 ? 's' : ''}</strong>.</p>
+            ${price ? `<p style="color:#6B7280;font-size:13px">Total for this activity: <strong>$${updated.count * price}</strong> — added to your tab when done.</p>` : ''}
+          </div>
+          <div style="background:#F9FAFB;padding:16px 32px;text-align:center;border-top:1px solid #E5E7EB">
+            <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+          </div>
+        </div>`)
     }
     return res.json({ status: 'APPROVED', count: updated.count })
   }
@@ -565,27 +517,22 @@ app.post('/activities/:id/request', authMiddleware, async (req: AuthRequest, res
     // Already approved — request one more spot
     if (admin) {
       await prisma.notification.create({ data: { userId: admin.id, title: 'Wants more!', body: `${requester?.name || requester?.email} wants an extra spot for ${activity?.name}` } })
-      try {
-        const userName = requester?.name || requester?.email?.split('@')[0] || 'Someone'
-        const actName = activity?.name ?? 'an activity'
-        await resend.emails.send({
-          from: FROM_EMAIL, to: [admin.email],
-          subject: `🐸 ${userName} wants an extra spot for ${actName}`,
-          html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
-            <div style="background:#1F6F4A;padding:32px;text-align:center">
-              <div style="font-size:40px;margin-bottom:8px">🐸</div>
-              <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">Extra Spot Request</h1>
-            </div>
-            <div style="padding:24px 32px">
-              <p style="color:#111827;font-size:15px;font-weight:700;margin:0 0 8px">${userName} wants one more spot for <strong>${actName}</strong>.</p>
-              <p style="color:#6B7280;font-size:13px;margin:0">They're already approved — use Admin → Activities to add the spot.</p>
-            </div>
-            <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
-              <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
-            </div>
-          </div>`
-        })
-      } catch {}
+      const userName = requester?.name || requester?.email?.split('@')[0] || 'Someone'
+      const actName = activity?.name ?? 'an activity'
+      await sendEmail(admin.email, `🐸 ${userName} wants an extra spot for ${actName}`,
+        `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+          <div style="background:#1F6F4A;padding:32px;text-align:center">
+            <div style="font-size:40px;margin-bottom:8px">🐸</div>
+            <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">Extra Spot Request</h1>
+          </div>
+          <div style="padding:24px 32px">
+            <p style="color:#111827;font-size:15px;font-weight:700;margin:0 0 8px">${userName} wants one more spot for <strong>${actName}</strong>.</p>
+            <p style="color:#6B7280;font-size:13px;margin:0">They're already approved — use Admin → Activities to add the spot.</p>
+          </div>
+          <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
+            <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+          </div>
+        </div>`)
     }
     return res.json({ status: 'wants_more', count: existing.count })
   }
@@ -593,27 +540,22 @@ app.post('/activities/:id/request', authMiddleware, async (req: AuthRequest, res
   if (admin) {
     await prisma.notification.create({ data: { userId: admin.id, title: 'Activity request', body: `${requester?.name || requester?.email} wants to join ${activity?.name}` } })
     io.emit('notification:new', { title: 'Activity request', body: `${requester?.name || requester?.email} wants to join ${activity?.name}` })
-    try {
-      const userName = requester?.name || requester?.email?.split('@')[0] || 'Someone'
-      const actName = activity?.name ?? 'an activity'
-      await resend.emails.send({
-        from: FROM_EMAIL, to: [admin.email],
-        subject: `🐸 ${userName} wants to join ${actName}`,
-        html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
-          <div style="background:#1F6F4A;padding:32px;text-align:center">
-            <div style="font-size:40px;margin-bottom:8px">🐸</div>
-            <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">New Activity Request</h1>
-          </div>
-          <div style="padding:24px 32px">
-            <p style="color:#111827;font-size:15px;font-weight:700;margin:0 0 8px">${userName} wants to join <strong>${actName}</strong>.</p>
-            <p style="color:#6B7280;font-size:13px;margin:0">Open the app → Admin → Activities to approve or ignore.</p>
-          </div>
-          <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
-            <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
-          </div>
-        </div>`
-      })
-    } catch {}
+    const userName = requester?.name || requester?.email?.split('@')[0] || 'Someone'
+    const actName = activity?.name ?? 'an activity'
+    await sendEmail(admin.email, `🐸 ${userName} wants to join ${actName}`,
+      `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+        <div style="background:#1F6F4A;padding:32px;text-align:center">
+          <div style="font-size:40px;margin-bottom:8px">🐸</div>
+          <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">New Activity Request</h1>
+        </div>
+        <div style="padding:24px 32px">
+          <p style="color:#111827;font-size:15px;font-weight:700;margin:0 0 8px">${userName} wants to join <strong>${actName}</strong>.</p>
+          <p style="color:#6B7280;font-size:13px;margin:0">Open the app → Admin → Activities to approve or ignore.</p>
+        </div>
+        <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
+          <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+        </div>
+      </div>`)
   }
   res.json({ status: 'pending', count: 0 })
 })
@@ -892,30 +834,24 @@ async function checkUpcomingItinerary() {
         const h = parseInt(m[1]), min = m[2]
         const h12 = h % 12 || 12
         const timeLabel = `${h12}:${min} ${h >= 12 ? 'PM' : 'AM'}`
-        for (const user of users) {
-          try {
-            await resend.emails.send({
-              from: FROM_EMAIL, to: [user.email],
-              subject: `⏰ Coming up: ${item.title} at ${timeLabel}`,
-              html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
-                <div style="background:#1F6F4A;padding:32px;text-align:center">
-                  <div style="font-size:40px;margin-bottom:8px">⏰</div>
-                  <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">Happening soon!</h1>
-                </div>
-                <div style="padding:24px 32px">
-                  <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 4px">${item.title}</p>
-                  <p style="color:#1F6F4A;font-size:13px;font-weight:600;margin:0 0 12px">Today at ${timeLabel}</p>
-                  ${item.info ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 12px">${item.info}</p>` : ''}
-                  <p style="color:#6B7280;font-size:13px;margin:0">Check the app for full details.</p>
-                </div>
-                <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
-                  <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
-                </div>
-              </div>`
-            })
-            await prisma.notification.create({ data: { userId: user.id, title: `Coming up: ${item.title}`, body: `Today at ${timeLabel}` } })
-          } catch {}
-        }
+        await sendBulkEmail(users, `⏰ Coming up: ${item.title} at ${timeLabel}`,
+          () => `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+            <div style="background:#1F6F4A;padding:32px;text-align:center">
+              <div style="font-size:40px;margin-bottom:8px">⏰</div>
+              <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">Happening soon!</h1>
+            </div>
+            <div style="padding:24px 32px">
+              <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 4px">${item.title}</p>
+              <p style="color:#1F6F4A;font-size:13px;font-weight:600;margin:0 0 12px">Today at ${timeLabel}</p>
+              ${item.info ? `<p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 12px">${item.info}</p>` : ''}
+              <p style="color:#6B7280;font-size:13px;margin:0">Check the app for full details.</p>
+            </div>
+            <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
+              <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+            </div>
+          </div>`)
+        for (const user of users)
+          await prisma.notification.create({ data: { userId: user.id, title: `Coming up: ${item.title}`, body: `Today at ${timeLabel}` } })
         io.emit('notification:new', { title: `Coming up: ${item.title}`, body: `Today at ${timeLabel}` })
       }
     }
