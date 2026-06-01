@@ -68,16 +68,17 @@ export async function sendBulkEmail<T extends Recipient>(
     console.warn(`[mailer] QUOTA: capped bulk send at ${toSend.length}/${recipients.length} recipients`)
   }
 
-  try {
-    await resend.batch.send(
-      toSend.map(r => ({ from: FROM_EMAIL, to: [r.email], subject, html: htmlFn(r) }))
-    )
-    tick(toSend.length)
-    return toSend.length
-  } catch (err: any) {
-    console.error('[mailer] Batch send failed:', err?.message || err)
-    return 0
+  let sent = 0
+  for (const r of toSend) {
+    try {
+      await resend.emails.send({ from: FROM_EMAIL, to: [r.email], subject, html: htmlFn(r) })
+      sent++
+    } catch (err: any) {
+      console.error(`[mailer] Failed to send to ${r.email}:`, err?.message || err)
+    }
   }
+  tick(sent)
+  return sent
 }
 
 export { resend }
