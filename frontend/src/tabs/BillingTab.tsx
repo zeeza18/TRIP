@@ -60,23 +60,48 @@ export default function BillingTab() {
 
   const balance = data.poolPerPerson - data.total
   const hasPool = data.poolPerPerson > 0
+  const pct = hasPool ? Math.min(100, (data.total / data.poolPerPerson) * 100) : 0
 
   return (
     <div className="px-4 py-4">
-      <h2 className="text-xl font-bold text-dark mb-4">Your Billing</h2>
+      <h2 className="text-xl font-bold text-dark mb-4">Your Wallet</h2>
 
-      {/* Balance card */}
-      <div className={`rounded-2xl p-5 mb-5 shadow-sm text-white ${balance >= 0 ? 'bg-primary' : 'bg-danger'}`}>
-        <p className="text-sm opacity-80 mb-1">{balance >= 0 ? 'You get back' : 'You owe admin'}</p>
-        <p className="text-4xl font-bold">${Math.abs(balance).toFixed(2)}</p>
+      {/* Wallet card */}
+      <div className="rounded-2xl p-5 mb-5 shadow-sm bg-primary text-white">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <p className="text-xs opacity-70 mb-0.5">Trip budget</p>
+            <p className="text-3xl font-bold">${data.poolPerPerson.toFixed(2)}</p>
+          </div>
+          <div className="text-3xl opacity-80">👛</div>
+        </div>
+        {/* Progress bar */}
         {hasPool && (
-          <div className="mt-3 pt-3 border-t border-white/20 flex justify-between text-xs opacity-80">
-            <span>Pool contribution: ${data.poolPerPerson.toFixed(2)}</span>
-            <span>Charged: ${data.total.toFixed(2)}</span>
+          <div className="mb-3">
+            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{ width: `${pct}%`, background: pct > 90 ? '#ef4444' : 'rgba(255,255,255,0.7)' }}
+              />
+            </div>
           </div>
         )}
-        {!hasPool && (
-          <p className="text-xs opacity-70 mt-2">Total charged to you: ${data.total.toFixed(2)}</p>
+        <div className="flex justify-between text-sm">
+          <div>
+            <p className="text-xs opacity-70">Spent</p>
+            <p className="font-semibold">−${data.total.toFixed(2)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs opacity-70">Remaining</p>
+            <p className={`font-bold text-lg ${balance < 0 ? 'text-red-300' : ''}`}>
+              ${Math.max(0, balance).toFixed(2)}
+            </p>
+          </div>
+        </div>
+        {balance < 0 && (
+          <p className="text-xs mt-2 bg-white/10 rounded-lg px-3 py-1.5 text-center">
+            Over budget by ${Math.abs(balance).toFixed(2)} — owe admin
+          </p>
         )}
       </div>
 
@@ -103,7 +128,7 @@ export default function BillingTab() {
       {/* Expense list */}
       {data.splits.length > 0 ? (
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-dark mb-2">Expense breakdown</h3>
+          <h3 className="text-sm font-semibold text-dark mb-2">Purchase history</h3>
           {data.splits.map(s => (
             <div key={s.id} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-3">
               <div className="text-xl w-8 text-center">{CAT_ICONS[s.expense.category] || ''}</div>
@@ -122,9 +147,9 @@ export default function BillingTab() {
         </div>
       ) : (
         <div className="text-center py-12">
-          <div className="text-5xl mb-3">No expenses</div>
-          <p className="text-muted text-sm">No expenses charged yet.</p>
-          <p className="text-muted text-xs mt-1">Admin will add expenses as the trip progresses.</p>
+          <div className="text-5xl mb-3">👛</div>
+          <p className="text-muted text-sm">No purchases yet.</p>
+          <p className="text-muted text-xs mt-1">Your spending history will appear here.</p>
         </div>
       )}
     </div>

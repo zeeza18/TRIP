@@ -54,13 +54,23 @@ export default function AdminTab() {
     } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed') }
   }
 
-  async function toggleUserActivity(activityId: string, userId: string) {
-    const key = `${activityId}-${userId}`
+  async function addUserActivity(activityId: string, userId: string) {
+    const key = `${activityId}-${userId}-add`
     setToggling(key)
     try {
-      await api.post(`/admin/activities/${activityId}/toggle-user/${userId}`)
+      await api.post(`/admin/activities/${activityId}/add-user/${userId}`)
       await loadData()
-    } catch { toast.error('Failed to update') }
+    } catch { toast.error('Failed') }
+    finally { setToggling(null) }
+  }
+
+  async function removeUserActivity(activityId: string, userId: string) {
+    const key = `${activityId}-${userId}-rem`
+    setToggling(key)
+    try {
+      await api.post(`/admin/activities/${activityId}/remove-user/${userId}`)
+      await loadData()
+    } catch { toast.error('Failed') }
     finally { setToggling(null) }
   }
 
@@ -377,36 +387,61 @@ export default function AdminTab() {
                     const participant = a.participants.find(p => p.userId === u.id)
                     const isPending = participant?.status === 'PENDING'
                     const isApproved = participant?.status === 'APPROVED'
-                    const key = `${a.id}-${u.id}`
+                    const count = participant?.count ?? 0
+                    const addKey = `${a.id}-${u.id}-add`
+                    const remKey = `${a.id}-${u.id}-rem`
                     return (
                       <div key={u.id}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-all
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all
                           ${isPending ? 'bg-amber-50 border border-amber-200' : isApproved ? 'bg-primary/5' : 'hover:bg-gray-50'}
                           ${a.isDone ? 'opacity-60' : ''}`}>
                         <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                           {(u.name || u.email)[0].toUpperCase()}
                         </div>
-                        <span className="text-sm text-dark flex-1">{u.name || u.email}</span>
+                        <span className="text-sm text-dark flex-1 truncate">{u.name || u.email}</span>
                         {isPending && (
-                          <span className="text-[10px] text-amber-600 font-semibold">Requested</span>
+                          <span className="text-[10px] text-amber-600 font-semibold shrink-0">Requested</span>
                         )}
                         {isApproved && a.estPrice > 0 && (
-                          <span className="text-xs font-semibold text-secondary">${a.estPrice}</span>
+                          <span className="text-xs font-semibold text-secondary shrink-0">${count * a.estPrice}</span>
                         )}
-                        {!a.isDone && (
+                        {/* Controls */}
+                        {!a.isDone && isPending && (
                           <button
-                            disabled={toggling === key}
-                            onClick={() => toggleUserActivity(a.id, u.id)}
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold transition-all shrink-0
-                              ${isPending
-                                ? 'bg-green-500 text-white hover:bg-green-600 shadow-sm'
-                                : isApproved
-                                  ? 'bg-primary/10 text-primary hover:bg-red-50 hover:text-danger'
-                                  : 'bg-gray-100 text-muted hover:bg-gray-200'
-                              }`}
-                            title={isPending ? 'Approve request' : isApproved ? 'Remove' : 'Add'}
+                            disabled={toggling === addKey}
+                            onClick={() => addUserActivity(a.id, u.id)}
+                            className="w-7 h-7 rounded-lg bg-green-500 text-white text-sm font-bold flex items-center justify-center hover:bg-green-600 shadow-sm shrink-0"
+                            title="Approve"
                           >
-                            {toggling === key ? '…' : isPending ? '✓' : isApproved ? '✓' : '+'}
+                            {toggling === addKey ? '…' : '✓'}
+                          </button>
+                        )}
+                        {!a.isDone && isApproved && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              disabled={toggling === remKey}
+                              onClick={() => removeUserActivity(a.id, u.id)}
+                              className="w-6 h-6 rounded-full bg-red-50 text-danger text-sm font-bold flex items-center justify-center hover:bg-red-100 transition-all"
+                            >
+                              {toggling === remKey ? '…' : '−'}
+                            </button>
+                            <span className="text-sm font-bold text-dark w-4 text-center">{count}</span>
+                            <button
+                              disabled={toggling === addKey}
+                              onClick={() => addUserActivity(a.id, u.id)}
+                              className="w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-bold flex items-center justify-center hover:bg-primary/20 transition-all"
+                            >
+                              {toggling === addKey ? '…' : '+'}
+                            </button>
+                          </div>
+                        )}
+                        {!a.isDone && !isPending && !isApproved && (
+                          <button
+                            disabled={toggling === addKey}
+                            onClick={() => addUserActivity(a.id, u.id)}
+                            className="w-6 h-6 rounded-full bg-gray-100 text-muted text-sm font-bold flex items-center justify-center hover:bg-primary/10 hover:text-primary transition-all shrink-0"
+                          >
+                            {toggling === addKey ? '…' : '+'}
                           </button>
                         )}
                       </div>

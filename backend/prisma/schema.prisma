@@ -90,6 +90,7 @@ model Participation {
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   status     String   @default("APPROVED")
+  count      Int      @default(1)
   joinedAt   DateTime @default(now())
 
   @@unique([activityId, userId])

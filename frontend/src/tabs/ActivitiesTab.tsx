@@ -14,7 +14,8 @@ interface Activity {
   participantCount: number
   isParticipating: boolean
   isPending: boolean
-  participants: { userId: string; name: string | null; email: string; status: string }[]
+  userCount: number
+  participants: { userId: string; name: string | null; email: string; status: string; count: number }[]
 }
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/g
@@ -62,6 +63,7 @@ export default function ActivitiesTab() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', estPrice: '', icon: '', description: '' })
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
 
   async function load() {
     try {
@@ -73,31 +75,28 @@ export default function ActivitiesTab() {
 
   useEffect(() => { load() }, [])
 
-  async function sendRequest(id: string, isPending: boolean) {
+  async function sendRequest(id: string, currentStatus: 'none' | 'pending' | 'approved') {
+    setBusy(id)
     try {
       const res = await api.post(`/activities/${id}/request`, {})
-      const newStatus = res.data.status
-      setActivities(prev => prev.map(a =>
-        a.id === id ? {
-          ...a,
-          isParticipating: newStatus === 'approved',
-          isPending: newStatus === 'pending',
-          participantCount: newStatus === 'none' && isPending
-            ? a.participantCount
-            : newStatus === 'approved'
-              ? a.participantCount + 1
-              : a.participantCount,
-        } : a
-      ))
-      if (newStatus === 'pending') toast.success('Request sent! Waiting for admin approval.')
-      if (newStatus === 'none') toast('Request cancelled.')
+      const s = res.data.status
+      if (s === 'none') {
+        setActivities(prev => prev.map(a => a.id === id ? { ...a, isPending: false } : a))
+        toast('Request cancelled.')
+      } else if (s === 'pending') {
+        setActivities(prev => prev.map(a => a.id === id ? { ...a, isPending: true } : a))
+        toast.success('Request sent! Waiting for admin approval.')
+      } else if (s === 'wants_more') {
+        toast.success('Sent! Admin will add your extra spot.')
+      }
     } catch { toast.error('Failed') }
+    finally { setBusy(null) }
   }
 
   async function markDone(id: string) {
     try {
       await api.patch(`/activities/${id}`, { isDone: true })
-      toast.success('Marked as done + expense created for participants!')
+      toast.success('Marked as done + expenses created!')
       load()
     } catch { toast.error('Failed') }
   }
@@ -175,14 +174,11 @@ export default function ActivitiesTab() {
                     <button
                       onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}
                       className={`w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 transition-colors ${expandedId === a.id ? 'bg-primary text-white' : 'bg-gray-200 text-gray-500 hover:bg-primary/20'}`}
-                      title="More info"
-                    >
-                      i
-                    </button>
+                    >i</button>
                   )}
                 </div>
                 <p className="text-xs text-muted mt-0.5">
-                  {a.participantCount} {a.participantCount === 1 ? 'person' : 'people'} in
+                  {a.participantCount} {a.participantCount === 1 ? 'spot' : 'spots'} taken
                 </p>
                 {a.description && expandedId === a.id && (
                   <div className="text-xs text-muted mt-1.5 leading-relaxed bg-gray-50 rounded-xl px-3 py-2">
@@ -190,14 +186,18 @@ export default function ActivitiesTab() {
                   </div>
                 )}
                 {a.isParticipating && a.estPrice > 0 && !a.isDone && (
-                  <p className="text-xs text-secondary font-semibold mt-1">+${a.estPrice} pending on your bill</p>
+                  <p className="text-xs text-secondary font-semibold mt-1">
+                    +${a.userCount * a.estPrice} pending on your bill
+                  </p>
                 )}
                 {a.isParticipating && a.estPrice > 0 && a.isDone && (
-                  <p className="text-xs text-danger font-semibold mt-1">${a.estPrice} charged to your bill</p>
+                  <p className="text-xs text-danger font-semibold mt-1">
+                    ${a.userCount * a.estPrice} charged to your bill
+                  </p>
                 )}
               </div>
 
-              {/* Right column: price + actions */}
+              {/* Right column: price + action */}
               <div className="flex flex-col items-end gap-2 shrink-0">
                 {/* Price badge */}
                 {a.estPrice > 0 ? (
@@ -209,27 +209,43 @@ export default function ActivitiesTab() {
                   <span className="text-[10px] bg-green-100 text-green-700 px-2.5 py-1 rounded-xl font-semibold">Free</span>
                 )}
 
+                {/* Action buttons */}
                 {!a.isDone && !a.isParticipating && !a.isPending && (
                   <button
-                    onClick={() => sendRequest(a.id, false)}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-full bg-gray-100 text-dark hover:bg-gray-200 transition-all active:scale-95"
+                    disabled={busy === a.id}
+                    onClick={() => sendRequest(a.id, 'none')}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-full bg-gray-100 text-dark hover:bg-primary/10 hover:text-primary transition-all active:scale-95 disabled:opacity-50"
                   >
                     Request
                   </button>
                 )}
+
                 {!a.isDone && a.isPending && (
                   <button
-                    onClick={() => sendRequest(a.id, true)}
-                    className="text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-all active:scale-95"
+                    disabled={busy === a.id}
+                    onClick={() => sendRequest(a.id, 'pending')}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-all active:scale-95 disabled:opacity-50"
                   >
                     Pending…
                   </button>
                 )}
+
+                {/* Approved: - N + counter */}
                 {a.isParticipating && (
-                  <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-primary text-white">
-                    I'm in ✓
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      disabled
+                      className="w-6 h-6 rounded-full bg-gray-100 text-gray-300 text-sm font-bold flex items-center justify-center cursor-not-allowed"
+                    >−</button>
+                    <span className="text-sm font-bold text-dark w-5 text-center">{a.userCount}</span>
+                    <button
+                      disabled={busy === a.id || a.isDone}
+                      onClick={() => sendRequest(a.id, 'approved')}
+                      className="w-6 h-6 rounded-full bg-primary/10 text-primary text-sm font-bold flex items-center justify-center hover:bg-primary/20 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >+</button>
+                  </div>
                 )}
+
                 {isAdmin && !a.isDone && (
                   <button onClick={() => markDone(a.id)}
                     className="text-[10px] font-semibold px-2 py-1 rounded-full bg-green-50 text-green-700 hover:bg-green-100">
