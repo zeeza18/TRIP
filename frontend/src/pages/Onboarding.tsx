@@ -20,6 +20,7 @@ export default function Onboarding() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [booze, setBooze] = useState<'yay' | 'nah'>('yay')
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
