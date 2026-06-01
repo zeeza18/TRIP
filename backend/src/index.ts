@@ -254,6 +254,8 @@ app.post('/admin/notify-all', authMiddleware, adminOnly, async (req: AuthRequest
       await prisma.notification.create({ data: { userId: user.id, title: subject, body } })
     } catch {}
   }
+  const announcement = await prisma.announcement.create({ data: { title: subject, body, pinned: true } })
+  io.emit('announcement:new', announcement)
   io.emit('notification:new', { title: subject, body })
   res.json({ ok: true, sent: users.length })
 })
