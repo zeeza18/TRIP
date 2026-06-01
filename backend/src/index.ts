@@ -5,6 +5,7 @@ import http from 'http'
 import { Server as SocketServer } from 'socket.io'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import crypto from 'crypto'
 import prisma from './prismaClient'
 import { authMiddleware, adminOnly, AuthRequest } from './middleware'
 import { Resend } from 'resend'
@@ -74,6 +75,59 @@ app.post('/auth/register', async (req: any, res: any) => {
     } catch {}
   }
   res.json({ id: user.id, email: user.email, name: user.name })
+})
+
+app.post('/auth/forgot-password', async (req: any, res: any) => {
+  const { email } = req.body
+  if (!email) return res.status(400).json({ error: 'email required' })
+  const user = await prisma.user.findUnique({ where: { email } })
+  if (!user) return res.json({ ok: true }) // don't reveal whether email exists
+  const token = crypto.randomBytes(32).toString('hex')
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000)
+  await prisma.passwordResetToken.create({ data: { email, token, expiresAt } })
+  const resetUrl = `${FRONTEND_URL}/reset-password?token=${token}`
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL, to: [email],
+      subject: 'Reset your Bullfrog Bash password',
+      html: `
+        <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+          <div style="background:#1F6F4A;padding:44px 36px;text-align:center">
+            <div style="font-size:52px;margin-bottom:10px">🐸</div>
+            <div style="color:#A7F3D0;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;margin-bottom:14px">Bullfrog Bash</div>
+            <h1 style="color:#ffffff;font-size:24px;font-weight:800;margin:0;line-height:1.3">Password Reset</h1>
+          </div>
+          <div style="padding:36px 36px 24px">
+            <p style="color:#111827;font-size:17px;font-weight:700;margin:0 0 10px">Forgot your password?</p>
+            <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px">No worries. Click the button below to set a new one. This link is valid for <strong>1 hour</strong>.</p>
+            <div style="text-align:center;margin:28px 0 8px">
+              <a href="${resetUrl}"
+                 style="display:inline-block;background:#1F6F4A;color:#ffffff;padding:16px 40px;border-radius:10px;text-decoration:none;font-size:16px;font-weight:700;letter-spacing:0.3px">
+                Reset My Password
+              </a>
+            </div>
+            <p style="color:#9CA3AF;font-size:12px;text-align:center;margin:16px 0 0">If you didn't request this, you can safely ignore this email.</p>
+          </div>
+          <div style="background:#F9FAFB;padding:20px 36px;text-align:center;border-top:1px solid #E5E7EB">
+            <div style="color:#9CA3AF;font-size:12px">Bullfrog Bash · June 16 - 18, 2026 · Bullfrog Lake, IL</div>
+          </div>
+        </div>`
+    })
+  } catch (err) { console.warn('Resend error', err) }
+  res.json({ ok: true })
+})
+
+app.post('/auth/reset-password', async (req: any, res: any) => {
+  const { token, password } = req.body
+  if (!token || !password) return res.status(400).json({ error: 'token and password required' })
+  const record = await prisma.passwordResetToken.findUnique({ where: { token } })
+  if (!record || record.used || record.expiresAt < new Date()) {
+    return res.status(400).json({ error: 'Invalid or expired reset link' })
+  }
+  const hashed = await bcrypt.hash(password, 10)
+  await prisma.user.update({ where: { email: record.email }, data: { password: hashed } })
+  await prisma.passwordResetToken.update({ where: { token }, data: { used: true } })
+  res.json({ ok: true })
 })
 
 app.get('/users/me', authMiddleware, async (req: AuthRequest, res: any) => {

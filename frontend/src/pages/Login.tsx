@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -72,9 +72,12 @@ export default function Login() {
               disabled={loading}
               className="w-full py-3 bg-primary text-white font-semibold rounded-xl hover:opacity-90 active:scale-95 transition-all disabled:opacity-60"
             >
-              {loading ? 'Logging in…' : 'Log in'}
+              {loading ? 'Logging in...' : 'Log in'}
             </button>
           </form>
+          <p className="text-center text-xs text-muted mt-4">
+            <Link to="/forgot-password" className="text-primary font-medium hover:underline">Forgot your password?</Link>
+          </p>
         </div>
 
         <p className="text-center text-xs text-muted mt-6">
