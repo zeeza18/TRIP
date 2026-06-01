@@ -210,7 +210,7 @@ export default function ActivitiesTab() {
                 )}
 
                 {/* Action buttons */}
-                {!a.isDone && !a.isParticipating && !a.isPending && (
+                {!isAdmin && !a.isDone && !a.isParticipating && !a.isPending && (
                   <button
                     disabled={busy === a.id}
                     onClick={() => sendRequest(a.id, 'none')}
@@ -220,7 +220,7 @@ export default function ActivitiesTab() {
                   </button>
                 )}
 
-                {!a.isDone && a.isPending && (
+                {!isAdmin && !a.isDone && a.isPending && (
                   <button
                     disabled={busy === a.id}
                     onClick={() => sendRequest(a.id, 'pending')}
@@ -230,8 +230,8 @@ export default function ActivitiesTab() {
                   </button>
                 )}
 
-                {/* Approved: - N + counter */}
-                {a.isParticipating && (
+                {/* Approved: - N + counter (users only) */}
+                {!isAdmin && a.isParticipating && (
                   <div className="flex items-center gap-1">
                     <button
                       disabled
