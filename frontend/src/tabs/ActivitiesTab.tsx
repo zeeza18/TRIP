@@ -61,6 +61,7 @@ export default function ActivitiesTab() {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', estPrice: '', icon: '', description: '' })
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   async function load() {
     try {
@@ -170,12 +171,21 @@ export default function ActivitiesTab() {
                   {a.isDone && (
                     <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Done</span>
                   )}
+                  {a.description && (
+                    <button
+                      onClick={() => setExpandedId(expandedId === a.id ? null : a.id)}
+                      className={`w-4 h-4 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 transition-colors ${expandedId === a.id ? 'bg-primary text-white' : 'bg-gray-200 text-gray-500 hover:bg-primary/20'}`}
+                      title="More info"
+                    >
+                      i
+                    </button>
+                  )}
                 </div>
                 <p className="text-xs text-muted mt-0.5">
                   {a.participantCount} {a.participantCount === 1 ? 'person' : 'people'} in
                 </p>
-                {a.description && (
-                  <div className="text-xs text-muted mt-1.5 leading-relaxed">
+                {a.description && expandedId === a.id && (
+                  <div className="text-xs text-muted mt-1.5 leading-relaxed bg-gray-50 rounded-xl px-3 py-2">
                     {renderDescription(a.description)}
                   </div>
                 )}
