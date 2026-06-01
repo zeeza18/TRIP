@@ -573,10 +573,12 @@ io.on('connection', (socket) => {
     try {
       const msg = await prisma.message.findUnique({ where: { id: data.messageId } })
       if (!msg || msg.senderId !== userId) return
-      await prisma.reaction.deleteMany({ where: { messageId: data.messageId } })
-      await prisma.message.delete({ where: { id: data.messageId } })
+      await prisma.$transaction([
+        prisma.reaction.deleteMany({ where: { messageId: data.messageId } }),
+        prisma.message.delete({ where: { id: data.messageId } })
+      ])
       io.emit('message:delete', { messageId: data.messageId })
-    } catch {}
+    } catch (e) { console.error('message:delete error', e) }
   })
 
   socket.on('message:edit', async (data: { messageId: string; body: string }) => {

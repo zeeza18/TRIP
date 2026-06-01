@@ -24,8 +24,24 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function isImage(body: string) {
-  return body.startsWith('data:image')
+interface ComboMsg { img: string; caption: string }
+
+function parseBody(body: string): { type: 'text' | 'image' | 'combo'; img?: string; caption?: string; text?: string } {
+  if (body.startsWith('{')) {
+    try {
+      const p = JSON.parse(body) as ComboMsg
+      if (p.img) return { type: p.caption ? 'combo' : 'image', img: p.img, caption: p.caption }
+    } catch {}
+  }
+  if (body.startsWith('data:image')) return { type: 'image', img: body }
+  return { type: 'text', text: body }
+}
+
+function notifBody(body: string) {
+  const p = parseBody(body)
+  if (p.type === 'text') return p.text!
+  if (p.type === 'image') return 'Sent a photo'
+  return p.caption ? `📷 ${p.caption}` : 'Sent a photo'
 }
 
 function compressImage(file: File, maxWidth = 900, quality = 0.72): Promise<string> {
@@ -93,7 +109,7 @@ export default function SocialTab() {
     socket.on('message:new', (msg: Message) => {
       setMessages(prev => prev.find(m => m.id === msg.id) ? prev : [...prev, msg])
       if (msg.senderId !== user?.id) {
-        showNotification(displayName(msg.sender), isImage(msg.body) ? 'Sent a photo' : msg.body)
+        showNotification(displayName(msg.sender), notifBody(msg.body))
       }
     })
 
@@ -136,7 +152,10 @@ export default function SocialTab() {
   }
 
   function send() {
-    const body = imagePreview || text.trim()
+    const caption = text.trim()
+    const body = imagePreview
+      ? (caption ? JSON.stringify({ img: imagePreview, caption }) : imagePreview)
+      : caption
     if (!body) return
     socketRef.current?.emit('message:send', { body })
     socketRef.current?.emit('typing:stop')
@@ -151,8 +170,9 @@ export default function SocialTab() {
   }
 
   function deleteMessage(messageId: string) {
-    socketRef.current?.emit('message:delete', { messageId })
+    setMessages(prev => prev.filter(m => m.id !== messageId))
     setActionFor(null)
+    socketRef.current?.emit('message:delete', { messageId })
   }
 
   function startEdit(msg: Message) {
@@ -217,7 +237,8 @@ export default function SocialTab() {
           const showName = !isOwn && (!prevMsg || prevMsg.senderId !== msg.senderId)
           const reactionGroups: Record<string, number> = {}
           msg.reactions.forEach(r => { reactionGroups[r.emoji] = (reactionGroups[r.emoji] || 0) + 1 })
-          const isImg = isImage(msg.body)
+          const parsed = parseBody(msg.body)
+          const isImg = parsed.type === 'image' || parsed.type === 'combo'
           const isEditing = editingId === msg.id
 
           return (
@@ -263,10 +284,15 @@ export default function SocialTab() {
                     }`}
                     onClick={e => { e.stopPropagation(); setActionFor(actionFor === msg.id ? null : msg.id) }}
                   >
-                    {isImg ? (
-                      <img src={msg.body} alt="shared" className="max-w-[240px] max-h-[320px] object-cover block" />
+                    {parsed.type === 'text' ? (
+                      parsed.text
+                    ) : parsed.type === 'image' ? (
+                      <img src={parsed.img} alt="shared" className="max-w-[240px] max-h-[320px] object-cover block" />
                     ) : (
-                      msg.body
+                      <>
+                        <img src={parsed.img} alt="shared" className="max-w-[240px] max-h-[280px] object-cover block" />
+                        <p className="px-3 pt-2 pb-1 text-sm leading-snug">{parsed.caption}</p>
+                      </>
                     )}
                   </div>
                 )}
@@ -342,7 +368,7 @@ export default function SocialTab() {
       {imagePreview && (
         <div className="px-4 py-2 bg-white border-t border-gray-100 flex items-center gap-3">
           <img src={imagePreview} alt="preview" className="h-14 w-14 object-cover rounded-xl border border-gray-200" />
-          <span className="text-xs text-muted flex-1">Ready to send</span>
+          <span className="text-xs text-muted flex-1">Add a caption or just hit send</span>
           <button onClick={() => setImagePreview(null)} className="text-xs text-red-400 hover:text-red-600 font-medium">Remove</button>
         </div>
       )}
@@ -366,8 +392,7 @@ export default function SocialTab() {
           value={text}
           onChange={e => { setText(e.target.value); if (e.target.value) emitTyping() }}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          placeholder={imagePreview ? 'Image ready — hit send' : 'Message the crew...'}
-          disabled={!!imagePreview}
+          placeholder={imagePreview ? 'Add a caption (optional)...' : 'Message the crew...'}
           className="min-w-0 flex-1 px-4 py-2.5 rounded-full bg-[#f0f2f5] text-dark text-sm border border-transparent focus:outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 disabled:opacity-60"
         />
 
