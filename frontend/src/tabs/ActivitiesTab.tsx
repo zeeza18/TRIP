@@ -13,12 +13,46 @@ interface Activity {
   isDone: boolean
   participantCount: number
   isParticipating: boolean
-  participants: { userId: string; name: string | null; email: string }[]
+  isPending: boolean
+  participants: { userId: string; name: string | null; email: string; status: string }[]
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
-  free: 'bg-green-100 text-green-700',
-  paid: 'bg-secondary/10 text-secondary',
+const URL_REGEX = /(https?:\/\/[^\s]+)/g
+
+function renderDescription(text: string): React.ReactNode {
+  const parts = text.split(URL_REGEX)
+  const nodes: React.ReactNode[] = []
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    if (!part) continue
+    if (part.startsWith('http')) {
+      const ytMatch = part.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/)
+      if (ytMatch) {
+        nodes.push(
+          <div key={i} className="mt-2 rounded-xl overflow-hidden">
+            <iframe
+              src={`https://www.youtube.com/embed/${ytMatch[1]}`}
+              className="w-full rounded-xl"
+              style={{ aspectRatio: '16/9', display: 'block' }}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              title="Video"
+            />
+          </div>
+        )
+      } else {
+        nodes.push(
+          <a key={i} href={part} target="_blank" rel="noopener noreferrer"
+            className="text-primary underline text-xs break-all inline">
+            {part}
+          </a>
+        )
+      }
+    } else {
+      nodes.push(<span key={i}>{part}</span>)
+    }
+  }
+  return <>{nodes}</>
 }
 
 export default function ActivitiesTab() {
@@ -38,17 +72,25 @@ export default function ActivitiesTab() {
 
   useEffect(() => { load() }, [])
 
-  async function toggleParticipate(id: string) {
+  async function sendRequest(id: string, isPending: boolean) {
     try {
-      const res = await api.post(`/activities/${id}/participate`, {})
+      const res = await api.post(`/activities/${id}/request`, {})
+      const newStatus = res.data.status
       setActivities(prev => prev.map(a =>
         a.id === id ? {
           ...a,
-          isParticipating: res.data.participating,
-          participantCount: a.participantCount + (res.data.participating ? 1 : -1)
+          isParticipating: newStatus === 'approved',
+          isPending: newStatus === 'pending',
+          participantCount: newStatus === 'none' && isPending
+            ? a.participantCount
+            : newStatus === 'approved'
+              ? a.participantCount + 1
+              : a.participantCount,
         } : a
       ))
-    } catch { toast.error('Failed to update') }
+      if (newStatus === 'pending') toast.success('Request sent! Waiting for admin approval.')
+      if (newStatus === 'none') toast('Request cancelled.')
+    } catch { toast.error('Failed') }
   }
 
   async function markDone(id: string) {
@@ -62,7 +104,12 @@ export default function ActivitiesTab() {
   async function addActivity() {
     if (!form.name) { toast.error('Name is required'); return }
     try {
-      await api.post('/activities', { name: form.name, estPrice: parseFloat(form.estPrice) || 0, icon: form.icon || null, description: form.description || null })
+      await api.post('/activities', {
+        name: form.name,
+        estPrice: parseFloat(form.estPrice) || 0,
+        icon: form.icon || null,
+        description: form.description || null,
+      })
       toast.success('Activity added!')
       setShowForm(false)
       setForm({ name: '', estPrice: '', icon: '', description: '' })
@@ -91,7 +138,7 @@ export default function ActivitiesTab() {
       {isAdmin && showForm && (
         <div className="bg-white rounded-2xl p-4 mb-4 shadow-sm space-y-3">
           <input value={form.icon} onChange={e => setForm(f => ({ ...f, icon: e.target.value }))}
-            placeholder="Icon name (e.g. canoe)"
+            placeholder="Emoji (e.g. 🛶)"
             className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
           <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             placeholder="Activity name *"
@@ -103,7 +150,7 @@ export default function ActivitiesTab() {
               className="w-full pl-7 pr-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
           </div>
           <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            placeholder="Additional details (optional)" rows={2}
+            placeholder="Additional details, links, etc. (optional)" rows={2}
             className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary resize-none" />
           <button onClick={addActivity} className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm">Add Activity</button>
         </div>
@@ -113,40 +160,65 @@ export default function ActivitiesTab() {
         {activities.map(a => (
           <div key={a.id} className={`bg-white rounded-2xl p-4 shadow-sm border-l-4 ${a.isDone ? 'border-green-400 opacity-80' : 'border-transparent'}`}>
             <div className="flex items-start gap-3">
-              <div className="text-3xl w-10 text-center shrink-0">{a.icon || <ActivityIcon />}</div>
+              {/* Icon */}
+              <div className="text-3xl w-10 text-center shrink-0 mt-0.5">{a.icon || <ActivityIcon />}</div>
+
+              {/* Main content */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-semibold text-dark text-sm">{a.name}</h3>
                   {a.isDone && (
                     <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Done</span>
                   )}
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${a.estPrice > 0 ? CATEGORY_COLORS.paid : CATEGORY_COLORS.free}`}>
-                    {a.estPrice > 0 ? `$${a.estPrice}/person` : 'Free'}
-                  </span>
                 </div>
-                <p className="text-xs text-muted mt-1">{a.participantCount} {a.participantCount === 1 ? 'person' : 'people'} in</p>
+                <p className="text-xs text-muted mt-0.5">
+                  {a.participantCount} {a.participantCount === 1 ? 'person' : 'people'} in
+                </p>
                 {a.description && (
-                  <p className="text-xs text-muted mt-1 leading-relaxed">{a.description}</p>
+                  <div className="text-xs text-muted mt-1.5 leading-relaxed">
+                    {renderDescription(a.description)}
+                  </div>
                 )}
                 {a.isParticipating && a.estPrice > 0 && !a.isDone && (
-                  <p className="text-xs text-secondary font-semibold mt-0.5">+${a.estPrice} pending on your bill</p>
+                  <p className="text-xs text-secondary font-semibold mt-1">+${a.estPrice} pending on your bill</p>
                 )}
                 {a.isParticipating && a.estPrice > 0 && a.isDone && (
-                  <p className="text-xs text-danger font-semibold mt-0.5">${a.estPrice} charged to your bill</p>
+                  <p className="text-xs text-danger font-semibold mt-1">${a.estPrice} charged to your bill</p>
                 )}
               </div>
-              <div className="flex flex-col gap-2 items-end shrink-0">
-                {!a.isDone && (
+
+              {/* Right column: price + actions */}
+              <div className="flex flex-col items-end gap-2 shrink-0">
+                {/* Price badge */}
+                {a.estPrice > 0 ? (
+                  <div className="text-right bg-secondary/10 rounded-xl px-2.5 py-1.5">
+                    <p className="text-base font-bold text-secondary leading-none">${a.estPrice}</p>
+                    <p className="text-[10px] text-secondary/70 leading-none mt-0.5">/person</p>
+                  </div>
+                ) : (
+                  <span className="text-[10px] bg-green-100 text-green-700 px-2.5 py-1 rounded-xl font-semibold">Free</span>
+                )}
+
+                {!a.isDone && !a.isParticipating && !a.isPending && (
                   <button
-                    onClick={() => toggleParticipate(a.id)}
-                    className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-all active:scale-95 ${
-                      a.isParticipating
-                        ? 'bg-primary text-white'
-                        : 'bg-gray-100 text-dark hover:bg-gray-200'
-                    }`}
+                    onClick={() => sendRequest(a.id, false)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-full bg-gray-100 text-dark hover:bg-gray-200 transition-all active:scale-95"
                   >
-                    {a.isParticipating ? "I'm in" : "I'm in?"}
+                    Request
                   </button>
+                )}
+                {!a.isDone && a.isPending && (
+                  <button
+                    onClick={() => sendRequest(a.id, true)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition-all active:scale-95"
+                  >
+                    Pending…
+                  </button>
+                )}
+                {a.isParticipating && (
+                  <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-primary text-white">
+                    I'm in ✓
+                  </span>
                 )}
                 {isAdmin && !a.isDone && (
                   <button onClick={() => markDone(a.id)}

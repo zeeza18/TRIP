@@ -342,9 +342,10 @@ app.get('/activities', authMiddleware, async (req: AuthRequest, res: any) => {
   })
   res.json(activities.map(a => ({
     ...a,
-    participantCount: a.participations.length,
-    isParticipating: a.participations.some(p => p.userId === userId),
-    participants: a.participations.map(p => ({ userId: p.userId, name: p.user.name, email: p.user.email })),
+    participantCount: a.participations.filter(p => p.status === 'APPROVED').length,
+    isParticipating: a.participations.some(p => p.userId === userId && p.status === 'APPROVED'),
+    isPending: a.participations.some(p => p.userId === userId && p.status === 'PENDING'),
+    participants: a.participations.map(p => ({ userId: p.userId, name: p.user.name, email: p.user.email, status: p.status })),
     participations: undefined
   })))
 })
@@ -365,7 +366,7 @@ app.patch('/activities/:id', authMiddleware, adminOnly, async (req: AuthRequest,
   if (isDone !== undefined) { data.isDone = isDone; if (isDone) data.doneAt = new Date() }
   const activity = await prisma.activity.update({ where: { id: req.params.id }, data })
   if (isDone && activity.estPrice > 0) {
-    const parts = await prisma.participation.findMany({ where: { activityId: activity.id } })
+    const parts = await prisma.participation.findMany({ where: { activityId: activity.id, status: 'APPROVED' } })
     if (parts.length > 0) {
       const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
       if (admin) {
@@ -396,23 +397,40 @@ app.post('/admin/activities/:id/toggle-user/:userId', authMiddleware, adminOnly,
   const userId = req.params.userId
   const existing = await prisma.participation.findUnique({ where: { activityId_userId: { activityId, userId } } })
   if (existing) {
+    if (existing.status === 'PENDING') {
+      await prisma.participation.update({ where: { activityId_userId: { activityId, userId } }, data: { status: 'APPROVED' } })
+      const activity = await prisma.activity.findUnique({ where: { id: activityId }, select: { name: true, estPrice: true } })
+      await prisma.notification.create({ data: { userId, title: 'Request approved!', body: `You\'re in for ${activity?.name}${activity?.estPrice ? ` — $${activity.estPrice} added when done` : ''}` } })
+      return res.json({ participating: true, status: 'APPROVED' })
+    }
     await prisma.participation.delete({ where: { activityId_userId: { activityId, userId } } })
     return res.json({ participating: false })
   }
-  await prisma.participation.create({ data: { activityId, userId } })
-  res.json({ participating: true })
+  await prisma.participation.create({ data: { activityId, userId, status: 'APPROVED' } })
+  res.json({ participating: true, status: 'APPROVED' })
 })
 
-app.post('/activities/:id/participate', authMiddleware, async (req: AuthRequest, res: any) => {
+app.post('/activities/:id/request', authMiddleware, async (req: AuthRequest, res: any) => {
   const userId = req.user?.sub
   const activityId = req.params.id
   const existing = await prisma.participation.findUnique({ where: { activityId_userId: { activityId, userId } } })
   if (existing) {
-    await prisma.participation.delete({ where: { activityId_userId: { activityId, userId } } })
-    return res.json({ participating: false })
+    if (existing.status === 'PENDING') {
+      await prisma.participation.delete({ where: { activityId_userId: { activityId, userId } } })
+      return res.json({ status: 'none' })
+    }
+    return res.json({ status: 'approved' })
   }
-  await prisma.participation.create({ data: { activityId, userId } })
-  res.json({ participating: true })
+  await prisma.participation.create({ data: { activityId, userId, status: 'PENDING' } })
+  const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
+  if (admin) {
+    const [activity, requester] = await Promise.all([
+      prisma.activity.findUnique({ where: { id: activityId }, select: { name: true } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } })
+    ])
+    await prisma.notification.create({ data: { userId: admin.id, title: 'Activity request', body: `${requester?.name || requester?.email} wants to join ${activity?.name}` } })
+  }
+  res.json({ status: 'pending' })
 })
 
 // ─── EXPENSES ──────────────────────────────────────────────────────────────

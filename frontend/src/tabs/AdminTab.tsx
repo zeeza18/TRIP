@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 interface ApprovedEmail { id: string; email: string; invited: boolean }
 interface UserRow { id: string; email: string; name: string | null; phone: string | null; boozePref: string | null; onboarded: boolean; idProof: string | null; role: string }
 interface BillingSummary { id: string; name: string | null; email: string; totalCharged: number; poolPerPerson: number; balance: number }
-interface ActivityRow { id: string; name: string; estPrice: number; icon: string | null; description: string | null; isDone: boolean; participants: { userId: string; name: string | null; email: string }[] }
+interface ActivityRow { id: string; name: string; estPrice: number; icon: string | null; description: string | null; isDone: boolean; participants: { userId: string; name: string | null; email: string; status: string }[] }
 
 const CATEGORIES = ['Accommodation', 'Transport', 'Food', 'Activity', 'Drinks', 'Other']
 
@@ -143,7 +143,10 @@ export default function AdminTab() {
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-xl">
         {([
           ['crew', `Crew (${joinedUsers.length}/16)`],
-          ['activities', 'Activities'],
+          ['activities', (() => {
+            const pending = activities.reduce((n, a) => n + a.participants.filter(p => p.status === 'PENDING').length, 0)
+            return pending > 0 ? `Activities (${pending})` : 'Activities'
+          })()],
           ['expenses', 'Expenses'],
           ['announce', 'Announce'],
         ] as const).map(([s, label]) => (
@@ -371,26 +374,42 @@ export default function AdminTab() {
                 ? <p className="text-xs text-muted">No crew joined yet.</p>
                 : <div className="space-y-1">
                   {joinedUsers.map(u => {
-                    const isIn = a.participants.some(p => p.userId === u.id)
+                    const participant = a.participants.find(p => p.userId === u.id)
+                    const isPending = participant?.status === 'PENDING'
+                    const isApproved = participant?.status === 'APPROVED'
                     const key = `${a.id}-${u.id}`
                     return (
-                      <label key={u.id}
-                        className={`flex items-center gap-3 px-3 py-2 rounded-xl cursor-pointer transition-all ${isIn ? 'bg-primary/5' : 'hover:bg-gray-50'} ${a.isDone ? 'opacity-60 cursor-not-allowed' : ''}`}>
-                        <input
-                          type="checkbox"
-                          checked={isIn}
-                          disabled={toggling === key || a.isDone}
-                          onChange={() => toggleUserActivity(a.id, u.id)}
-                          className="w-4 h-4 accent-primary shrink-0"
-                        />
+                      <div key={u.id}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-all
+                          ${isPending ? 'bg-amber-50 border border-amber-200' : isApproved ? 'bg-primary/5' : 'hover:bg-gray-50'}
+                          ${a.isDone ? 'opacity-60' : ''}`}>
                         <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-bold text-primary shrink-0">
                           {(u.name || u.email)[0].toUpperCase()}
                         </div>
                         <span className="text-sm text-dark flex-1">{u.name || u.email}</span>
-                        {isIn && a.estPrice > 0 && (
+                        {isPending && (
+                          <span className="text-[10px] text-amber-600 font-semibold">Requested</span>
+                        )}
+                        {isApproved && a.estPrice > 0 && (
                           <span className="text-xs font-semibold text-secondary">${a.estPrice}</span>
                         )}
-                      </label>
+                        {!a.isDone && (
+                          <button
+                            disabled={toggling === key}
+                            onClick={() => toggleUserActivity(a.id, u.id)}
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm font-bold transition-all shrink-0
+                              ${isPending
+                                ? 'bg-green-500 text-white hover:bg-green-600 shadow-sm'
+                                : isApproved
+                                  ? 'bg-primary/10 text-primary hover:bg-red-50 hover:text-danger'
+                                  : 'bg-gray-100 text-muted hover:bg-gray-200'
+                              }`}
+                            title={isPending ? 'Approve request' : isApproved ? 'Remove' : 'Add'}
+                          >
+                            {toggling === key ? '…' : isPending ? '✓' : isApproved ? '✓' : '+'}
+                          </button>
+                        )}
+                      </div>
                     )
                   })}
                 </div>

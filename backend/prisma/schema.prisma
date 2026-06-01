@@ -89,6 +89,7 @@ model Participation {
   activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   userId     String
   user       User     @relation(fields: [userId], references: [id])
+  status     String   @default("APPROVED")
   joinedAt   DateTime @default(now())
 
   @@unique([activityId, userId])
