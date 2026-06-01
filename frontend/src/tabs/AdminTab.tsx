@@ -113,7 +113,7 @@ export default function AdminTab() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-xl font-bold text-dark">Admin Panel</h2>
-          <p className="text-xs text-muted">Bullfrog Bash · Jun 16–18</p>
+          <p className="text-xs text-muted">Bullfrog Grazuasion Party</p>
         </div>
         <button onClick={seedDefaults}
           className="px-3 py-1.5 text-xs bg-accent/10 text-accent font-semibold rounded-xl hover:bg-accent/20">
@@ -166,7 +166,15 @@ export default function AdminTab() {
                       <p className="text-sm font-medium text-dark">{u.name || '—'}</p>
                       <p className="text-xs text-muted truncate">{u.email}</p>
                       {u.idProof ? (
-                        <p className="text-[11px] text-accent font-medium mt-0.5">ID: {u.idProof}</p>
+                        u.idProof.startsWith('data:image') ? (
+                          <a href={u.idProof} target="_blank" rel="noopener noreferrer"
+                            className="text-[11px] text-primary font-medium mt-0.5 inline-block hover:underline">View ID photo</a>
+                        ) : u.idProof.startsWith('data:application/pdf') ? (
+                          <a href={u.idProof} target="_blank" rel="noopener noreferrer"
+                            className="text-[11px] text-primary font-medium mt-0.5 inline-block hover:underline">View ID PDF</a>
+                        ) : (
+                          <p className="text-[11px] text-accent font-medium mt-0.5">ID: {u.idProof}</p>
+                        )
                       ) : (
                         u.role === 'ADMIN' ? (
                           <p className="text-[11px] text-muted mt-0.5">Admin</p>

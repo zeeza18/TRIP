@@ -15,6 +15,7 @@ export default function Onboarding() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [idProof, setIdProof] = useState('')
+  const [idProofName, setIdProofName] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [booze, setBooze] = useState<'yay' | 'nah'>('yay')
@@ -44,8 +45,13 @@ export default function Onboarding() {
       <div className="w-full max-w-sm">
         <div className="text-center mb-6">
           <div className="text-6xl mb-2">🐸</div>
-          <h1 className="text-2xl font-bold text-dark">Bullfrog Bash</h1>
-          <p className="text-muted text-sm mt-1">Set up your account</p>
+          <h1 className="whitespace-nowrap text-[clamp(1.55rem,7vw,2rem)] font-black leading-none text-dark">
+            Bullfrog <span className="text-primary">Grazuasion</span> Party
+          </h1>
+          <div className="mt-3 inline-flex -rotate-1 rounded-full bg-secondary px-3.5 py-1.5 text-[10px] font-black uppercase text-dark shadow-sm">
+            Lilypad admission office
+          </div>
+          <p className="text-primary text-sm font-black leading-snug mt-3">Claim your diploma party credentials.</p>
         </div>
 
         {/* Progress dots */}
@@ -86,15 +92,28 @@ export default function Onboarding() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-dark mb-1">ID Proof <span className="text-muted font-normal">(optional — for check-in)</span></label>
-                <input
-                  value={idProof} onChange={e => setIdProof(e.target.value)}
-                  placeholder="e.g. Driver's License, Passport"
-                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary"
-                />
+                <label className="block text-xs font-medium text-dark mb-1">ID Proof <span className="text-muted font-normal">(driver's license or passport)</span></label>
+                <label className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${idProof ? 'border-primary bg-green-50' : 'border-gray-200 bg-white hover:border-primary'}`}>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={e => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); return }
+                      setIdProofName(file.name)
+                      const reader = new FileReader()
+                      reader.onload = ev => setIdProof(ev.target?.result as string)
+                      reader.readAsDataURL(file)
+                    }}
+                  />
+                  <span className="text-lg">{idProof ? '✅' : '📎'}</span>
+                  <span className="text-sm text-dark truncate">{idProofName || 'Upload photo or PDF'}</span>
+                </label>
               </div>
               <button
-                onClick={() => { if (!name || !email) { toast.error('Name and email are required'); return } setStep(2) }}
+                onClick={() => { if (!name || !email) { toast.error('Name and email are required'); return } if (!idProof) { toast.error('ID proof is required for check-in'); return } setStep(2) }}
                 className="w-full py-3 bg-primary text-white font-semibold rounded-xl hover:opacity-90 transition-all"
               >
                 Next →
