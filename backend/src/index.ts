@@ -346,8 +346,8 @@ app.post('/itinerary', authMiddleware, adminOnly, async (req: AuthRequest, res: 
 })
 
 app.patch('/itinerary/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
-  const { date, time, title, info } = req.body
-  const item = await prisma.itineraryItem.update({ where: { id: req.params.id }, data: { date, time, title, info } })
+  const { date, time, title, info, order } = req.body
+  const item = await prisma.itineraryItem.update({ where: { id: req.params.id }, data: { date, time, title, info, ...(order !== undefined && { order }) } })
   res.json(item)
 })
 

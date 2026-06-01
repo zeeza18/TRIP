@@ -49,6 +49,8 @@ function renderInfo(info: string) {
   )
 }
 
+const INPUT_CLS = 'w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary'
+
 export default function ItineraryTab() {
   const { isAdmin } = useAuth()
   const [items, setItems] = useState<Item[]>([])
@@ -56,6 +58,8 @@ export default function ItineraryTab() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ date: '2026-06-16', time: '', title: '', info: '' })
   const [expandedInfo, setExpandedInfo] = useState<Set<string>>(new Set())
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ date: '2026-06-16', time: '', title: '', info: '' })
 
   async function load() {
     try {
@@ -77,6 +81,29 @@ export default function ItineraryTab() {
       setForm({ date: '2026-06-16', time: '', title: '', info: '' })
       load()
     } catch { toast.error('Failed to add item') }
+  }
+
+  function startEdit(item: Item) {
+    setEditingId(item.id)
+    setEditForm({
+      date: item.date.slice(0, 10),
+      time: item.time ?? '',
+      title: item.title,
+      info: item.info ?? '',
+    })
+    // Close info panel if open
+    setExpandedInfo(prev => { const s = new Set(prev); s.delete(item.id); return s })
+  }
+
+  async function saveEdit(id: string) {
+    if (!editForm.title) { toast.error('Title is required'); return }
+    const order = timeToMinutes(editForm.time) ?? 9999
+    try {
+      await api.patch(`/itinerary/${id}`, { ...editForm, order })
+      toast.success('Updated!')
+      setEditingId(null)
+      load()
+    } catch { toast.error('Failed to update') }
   }
 
   async function deleteItem(id: string) {
@@ -118,7 +145,8 @@ export default function ItineraryTab() {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-bold text-dark">Trip Itinerary</h2>
         {isAdmin && (
-          <button onClick={() => setShowForm(!showForm)} className="text-sm text-primary font-semibold">
+          <button onClick={() => { setShowForm(!showForm); setEditingId(null) }}
+            className="text-sm text-primary font-semibold">
             {showForm ? 'Cancel' : '+ Add'}
           </button>
         )}
@@ -126,20 +154,16 @@ export default function ItineraryTab() {
 
       {isAdmin && showForm && (
         <div className="bg-white rounded-2xl p-4 mb-4 shadow-sm space-y-3">
-          <select value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary">
+          <select value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className={INPUT_CLS}>
             <option value="2026-06-16">Jun 16 — Arrival</option>
             <option value="2026-06-17">Jun 17 — Main Day</option>
             <option value="2026-06-18">Jun 18 — Checkout</option>
           </select>
-          <input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))}
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
+          <input type="time" value={form.time} onChange={e => setForm(f => ({ ...f, time: e.target.value }))} className={INPUT_CLS} />
           <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-            placeholder="Title *"
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
+            placeholder="Title *" className={INPUT_CLS} />
           <input value={form.info} onChange={e => setForm(f => ({ ...f, info: e.target.value }))}
-            placeholder="Details or paste a link (optional)"
-            className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-dark focus:outline-none focus:ring-2 focus:ring-primary" />
+            placeholder="Details or paste a link (optional)" className={INPUT_CLS} />
           <button onClick={addItem} className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm">Add Item</button>
         </div>
       )}
@@ -152,34 +176,58 @@ export default function ItineraryTab() {
           </div>
           <div className="relative pl-4 border-l-2 border-gray-100 space-y-3">
             {grouped[date].map(item => (
-              <div key={item.id} className="bg-white rounded-xl p-3 shadow-sm relative group">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    {item.time && (
-                      <p className="text-[10px] font-semibold text-primary uppercase tracking-wide mb-0.5">
-                        {formatTime(item.time)}
-                      </p>
-                    )}
-                    <p className="text-sm font-semibold text-dark">{item.title}</p>
-                    {expandedInfo.has(item.id) && item.info && (
-                      <p className="text-xs text-muted mt-1 leading-relaxed">{renderInfo(item.info)}</p>
-                    )}
+              <div key={item.id} className="bg-white rounded-xl p-3 shadow-sm">
+                {isAdmin && editingId === item.id ? (
+                  <div className="space-y-2">
+                    <select value={editForm.date} onChange={e => setEditForm(f => ({ ...f, date: e.target.value }))} className={INPUT_CLS}>
+                      <option value="2026-06-16">Jun 16 — Arrival</option>
+                      <option value="2026-06-17">Jun 17 — Main Day</option>
+                      <option value="2026-06-18">Jun 18 — Checkout</option>
+                    </select>
+                    <input type="time" value={editForm.time} onChange={e => setEditForm(f => ({ ...f, time: e.target.value }))} className={INPUT_CLS} />
+                    <input value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Title *" className={INPUT_CLS} />
+                    <input value={editForm.info} onChange={e => setEditForm(f => ({ ...f, info: e.target.value }))}
+                      placeholder="Details or paste a link (optional)" className={INPUT_CLS} />
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={() => saveEdit(item.id)}
+                        className="flex-1 py-2 bg-primary text-white rounded-xl font-semibold text-sm">Save</button>
+                      <button onClick={() => setEditingId(null)}
+                        className="flex-1 py-2 bg-gray-100 text-dark rounded-xl font-semibold text-sm">Cancel</button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {item.info && (
-                      <button
-                        onClick={() => toggleInfo(item.id)}
-                        className={`w-5 h-5 rounded-full border text-[10px] font-bold flex items-center justify-center transition-colors
-                          ${expandedInfo.has(item.id) ? 'bg-primary text-white border-primary' : 'text-muted border-gray-300 hover:border-primary hover:text-primary'}`}>
-                        i
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button onClick={() => deleteItem(item.id)}
-                        className="text-danger text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
-                    )}
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      {item.time && (
+                        <p className="text-[10px] font-semibold text-primary uppercase tracking-wide mb-0.5">
+                          {formatTime(item.time)}
+                        </p>
+                      )}
+                      <p className="text-sm font-semibold text-dark">{item.title}</p>
+                      {expandedInfo.has(item.id) && item.info && (
+                        <p className="text-xs text-muted mt-1 leading-relaxed">{renderInfo(item.info)}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {item.info && (
+                        <button onClick={() => toggleInfo(item.id)}
+                          className={`w-5 h-5 rounded-full border text-[10px] font-bold flex items-center justify-center transition-colors
+                            ${expandedInfo.has(item.id) ? 'bg-primary text-white border-primary' : 'text-muted border-gray-300 hover:border-primary hover:text-primary'}`}>
+                          i
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <>
+                          <button onClick={() => startEdit(item)}
+                            className="text-muted hover:text-primary transition-colors text-xs px-1">✏️</button>
+                          <button onClick={() => deleteItem(item.id)}
+                            className="text-danger hover:opacity-70 transition-opacity text-xs px-1">×</button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             ))}
           </div>
