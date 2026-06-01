@@ -25,20 +25,19 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="mx-auto mb-8 flex w-full max-w-sm flex-col items-center text-center">
-          <div className="text-7xl mb-3">🐸</div>
-          <h1 className="w-full whitespace-nowrap text-center text-[clamp(1.25rem,6vw,2.35rem)] font-black leading-none text-dark">
+    <div className="h-dvh bg-background flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-sm flex flex-col items-center">
+        <div className="text-center mb-5">
+          <h1 className="w-full whitespace-nowrap text-[clamp(1.25rem,6vw,2.35rem)] font-black leading-none text-dark">
             Bullfrog <span className="text-primary">Grazuasion</span> Party
           </h1>
-          <p className="mx-auto mt-3 max-w-[19rem] text-center text-sm font-black leading-snug text-primary">
+          <p className="mt-2 text-sm font-black leading-snug text-primary">
             Caps off, frogs out, and hop the way to the journey of adventure.
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-md p-6">
-          <h2 className="text-lg font-semibold text-dark mb-5">Welcome back</h2>
+        <div className="w-full bg-white rounded-2xl shadow-md p-6">
+          <h2 className="text-lg font-semibold text-dark mb-5 text-center">Welcome back</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-dark mb-1">Email</label>
@@ -83,7 +82,6 @@ export default function Login() {
             <Link to="/forgot-password" className="text-primary font-medium hover:underline">Forgot your password?</Link>
           </p>
         </div>
-
       </div>
     </div>
   )
