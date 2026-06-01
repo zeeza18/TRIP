@@ -659,6 +659,34 @@ app.delete('/expenses/:id', authMiddleware, adminOnly, async (req: AuthRequest, 
 
 // ─── BILLING ──────────────────────────────────────────────────────────────
 
+app.get('/billing/user/:userId', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const splits = await prisma.expenseSplit.findMany({
+    where: { userId: req.params.userId },
+    include: { expense: { select: { name: true, category: true, createdAt: true } } },
+    orderBy: { expense: { createdAt: 'desc' } }
+  })
+  res.json(splits)
+})
+
+app.delete('/billing/split/:splitId', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  try {
+    await prisma.expenseSplit.delete({ where: { id: req.params.splitId } })
+    io.emit('billing:update', {})
+    res.json({ ok: true })
+  } catch (e: any) {
+    if (e?.code === 'P2025') return res.status(404).json({ error: 'Split not found' })
+    throw e
+  }
+})
+
+app.patch('/billing/split/:splitId', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { share } = req.body
+  if (share === undefined || isNaN(Number(share))) return res.status(400).json({ error: 'share required' })
+  const split = await prisma.expenseSplit.update({ where: { id: req.params.splitId }, data: { share: Number(share) } })
+  io.emit('billing:update', {})
+  res.json(split)
+})
+
 app.get('/billing/me', authMiddleware, async (req: AuthRequest, res: any) => {
   const userId = req.user?.sub
   const splits = await prisma.expenseSplit.findMany({
