@@ -20,6 +20,7 @@ export default function AdminTab() {
   const [poolInput, setPoolInput] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [expenseForm, setExpenseForm] = useState({ name: '', amount: '', category: 'Accommodation', splitAll: true })
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const [notifForm, setNotifForm] = useState({ subject: '', body: '' })
   const [sending, setSending] = useState(false)
   const [section, setSection] = useState<'crew' | 'activities' | 'expenses' | 'announce'>('crew')
@@ -76,13 +77,16 @@ export default function AdminTab() {
 
   async function addExpense() {
     if (!expenseForm.name || !expenseForm.amount) { toast.error('Name and amount required'); return }
+    if (!expenseForm.splitAll && selectedUserIds.length === 0) { toast.error('Select at least one crew member'); return }
     try {
       await api.post('/expenses', {
         name: expenseForm.name, amount: parseFloat(expenseForm.amount),
-        category: expenseForm.category, splitAll: expenseForm.splitAll
+        category: expenseForm.category, splitAll: expenseForm.splitAll,
+        userIds: expenseForm.splitAll ? undefined : selectedUserIds,
       })
       toast.success('Expense added and split!')
       setExpenseForm({ name: '', amount: '', category: 'Accommodation', splitAll: true })
+      setSelectedUserIds([])
       loadData()
     } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed') }
   }
@@ -470,10 +474,40 @@ export default function AdminTab() {
               {CATEGORIES.map(c => <option key={c}>{c}</option>)}
             </select>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={expenseForm.splitAll} onChange={e => setExpenseForm(f => ({ ...f, splitAll: e.target.checked }))}
-                className="w-4 h-4 accent-primary" />
+              <input type="checkbox" checked={expenseForm.splitAll} onChange={e => {
+                setExpenseForm(f => ({ ...f, splitAll: e.target.checked }))
+                if (e.target.checked) setSelectedUserIds([])
+              }} className="w-4 h-4 accent-primary" />
               <span className="text-sm text-dark">Split equally across all crew</span>
             </label>
+            {!expenseForm.splitAll && (
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <p className="text-xs font-semibold text-muted px-3 py-2 bg-gray-50 border-b border-gray-200">
+                  Select who to split among
+                  {expenseForm.amount && selectedUserIds.length > 0 && (
+                    <span className="text-primary ml-1">
+                      — ${(parseFloat(expenseForm.amount) / selectedUserIds.length).toFixed(2)}/person
+                    </span>
+                  )}
+                </p>
+                <div className="divide-y divide-gray-100">
+                  {users.filter(u => u.onboarded).map(u => (
+                    <label key={u.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50">
+                      <input type="checkbox"
+                        checked={selectedUserIds.includes(u.id)}
+                        onChange={e => setSelectedUserIds(prev =>
+                          e.target.checked ? [...prev, u.id] : prev.filter(id => id !== u.id)
+                        )}
+                        className="w-4 h-4 accent-primary flex-shrink-0" />
+                      <span className="text-sm text-dark">{u.name || u.email}</span>
+                    </label>
+                  ))}
+                  {users.filter(u => u.onboarded).length === 0 && (
+                    <p className="text-xs text-muted px-3 py-2">No onboarded crew yet</p>
+                  )}
+                </div>
+              </div>
+            )}
             <button onClick={addExpense} className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm">
               Add &amp; Split
             </button>
