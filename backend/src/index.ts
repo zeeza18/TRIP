@@ -151,17 +151,33 @@ app.post('/admin/send-invite', authMiddleware, adminOnly, async (req: AuthReques
   try {
     await resend.emails.send({
       from: FROM_EMAIL, to: [email],
-      subject: "🐸 You're invited to Bullfrog Bash!",
+      subject: "You're on the list. Their Educasion is Grazuasion 🐸",
       html: `
-        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-          <h1 style="color:#1F6F4A">Bullfrog Bash 🐸</h1>
-          <p>You've been invited to join our private trip app for <strong>Bullfrog Lake, June 16–18</strong>!</p>
-          <p>Click below to set up your account:</p>
-          <a href="${FRONTEND_URL}/onboard?email=${encodeURIComponent(email)}"
-             style="display:inline-block;background:#1F6F4A;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;margin:16px 0;font-size:16px">
-            Set up my account →
-          </a>
-          <p style="color:#9CA3AF;font-size:12px">Bullfrog Lake, Illinois · June 16–18, 2026</p>
+        <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+          <div style="background:#1F6F4A;padding:44px 36px;text-align:center">
+            <div style="font-size:52px;margin-bottom:10px">🐸</div>
+            <div style="color:#A7F3D0;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;margin-bottom:14px">Bullfrog Bash</div>
+            <h1 style="color:#ffffff;font-size:26px;font-weight:800;margin:0;line-height:1.3">Their Educasion<br>is Grazuasion</h1>
+          </div>
+          <div style="padding:36px 36px 24px">
+            <p style="color:#111827;font-size:17px;font-weight:700;margin:0 0 10px">Hey, you made the list.</p>
+            <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 24px">You're invited to the most exclusive graduation trip at <strong>Bullfrog Lake</strong>. Cabin life, the whole crew, big vibes only.</p>
+            <div style="background:#F0FDF4;border-left:4px solid #1F6F4A;padding:14px 18px;border-radius:0 8px 8px 0;margin-bottom:28px">
+              <div style="color:#1F6F4A;font-weight:700;font-size:15px">June 16 - 18, 2026</div>
+              <div style="color:#6B7280;font-size:13px;margin-top:3px">Bullfrog Lake, Illinois</div>
+            </div>
+            <p style="color:#6B7280;font-size:14px;line-height:1.6;margin:0 0 24px">Set up your account to see the full itinerary, sign up for activities, track expenses, and stay in the loop with the group.</p>
+            <div style="text-align:center;margin:28px 0 8px">
+              <a href="${FRONTEND_URL}/onboard?email=${encodeURIComponent(email)}"
+                 style="display:inline-block;background:#1F6F4A;color:#ffffff;padding:16px 40px;border-radius:10px;text-decoration:none;font-size:16px;font-weight:700;letter-spacing:0.3px">
+                Set Up My Account
+              </a>
+            </div>
+            <p style="color:#D1D5DB;font-size:12px;text-align:center;margin:16px 0 0">This link is just for you. Don't share it.</p>
+          </div>
+          <div style="background:#F9FAFB;padding:20px 36px;text-align:center;border-top:1px solid #E5E7EB">
+            <div style="color:#9CA3AF;font-size:12px">Bullfrog Bash · June 16 - 18, 2026 · Bullfrog Lake, IL</div>
+          </div>
         </div>`
     })
     await prisma.approvedEmail.update({ where: { email }, data: { invited: true } })
