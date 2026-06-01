@@ -380,6 +380,7 @@ app.patch('/activities/:id', authMiddleware, adminOnly, async (req: AuthRequest,
         })
         await prisma.expenseSplit.createMany({ data: parts.map(p => ({ expenseId: expense.id, userId: p.userId, share: p.count * activity.estPrice })) })
         for (const p of parts) await prisma.notification.create({ data: { userId: p.userId, title: `${activity.name} billed`, body: `$${p.count * activity.estPrice} added to your tab` } })
+        io.emit('billing:update', {})
       }
     }
   }
@@ -407,13 +408,16 @@ app.post('/admin/activities/:id/add-user/:userId', authMiddleware, adminOnly, as
     if (existing.status === 'PENDING') {
       await prisma.participation.update({ where: { activityId_userId: { activityId, userId } }, data: { status: 'APPROVED', count: 1 } })
       await prisma.notification.create({ data: { userId, title: 'Request approved!', body: `You\'re in for ${activity?.name}${activity?.estPrice ? ` — $${activity.estPrice} added when done` : ''}` } })
+      io.emit('billing:update', {})
       return res.json({ status: 'APPROVED', count: 1 })
     }
     const updated = await prisma.participation.update({ where: { activityId_userId: { activityId, userId } }, data: { count: { increment: 1 } } })
     await prisma.notification.create({ data: { userId, title: 'Spot added!', body: `You now have ${updated.count} spot${updated.count > 1 ? 's' : ''} for ${activity?.name}` } })
+    io.emit('billing:update', {})
     return res.json({ status: 'APPROVED', count: updated.count })
   }
   await prisma.participation.create({ data: { activityId, userId, status: 'APPROVED', count: 1 } })
+  io.emit('billing:update', {})
   res.json({ status: 'APPROVED', count: 1 })
 })
 
@@ -425,9 +429,11 @@ app.post('/admin/activities/:id/remove-user/:userId', authMiddleware, adminOnly,
   if (!existing) return res.json({ status: 'none', count: 0 })
   if (existing.count <= 1) {
     await prisma.participation.delete({ where: { activityId_userId: { activityId, userId } } })
+    io.emit('billing:update', {})
     return res.json({ status: 'none', count: 0 })
   }
   const updated = await prisma.participation.update({ where: { activityId_userId: { activityId, userId } }, data: { count: { decrement: 1 } } })
+  io.emit('billing:update', {})
   res.json({ status: 'APPROVED', count: updated.count })
 })
 

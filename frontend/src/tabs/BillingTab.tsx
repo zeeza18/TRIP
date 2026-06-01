@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { io, Socket } from 'socket.io-client'
 import { ActivityIcon, TransportIcon, FoodIcon, DrinksIcon, OtherIcon, WalletIcon, BillingIcon } from '../components/Icons'
 import toast from 'react-hot-toast'
 import { api } from '../api'
@@ -44,6 +45,7 @@ function formatDate(iso: string) {
 export default function BillingTab() {
   const [data, setData] = useState<BillingData | null>(null)
   const [loading, setLoading] = useState(true)
+  const socketRef = useRef<Socket | null>(null)
 
   async function load() {
     try {
@@ -53,7 +55,24 @@ export default function BillingTab() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+
+    // Poll every 30s as baseline
+    const poll = setInterval(load, 30_000)
+
+    // Socket: instant update when admin approves/removes/marks done or adds expense
+    const token = localStorage.getItem('accessToken')
+    const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:4001', { auth: { token } })
+    socketRef.current = socket
+    socket.on('billing:update', load)
+    socket.on('expense:new', load)
+
+    return () => {
+      clearInterval(poll)
+      socket.disconnect()
+    }
+  }, [])
 
   if (loading) return <div className="flex justify-center py-20">Loading...</div>
   if (!data) return null
@@ -67,38 +86,39 @@ export default function BillingTab() {
     <div className="px-4 py-4">
       <h2 className="text-xl font-bold text-dark mb-4">Your Wallet</h2>
 
-      {/* Wallet card */}
+      {/* Wallet card — remaining balance is the hero */}
       <div className="rounded-2xl p-5 mb-5 shadow-sm bg-primary text-white">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <p className="text-xs opacity-70 mb-0.5">Trip budget</p>
-            <p className="text-3xl font-bold">${data.poolPerPerson.toFixed(2)}</p>
-          </div>
+        <div className="flex items-start justify-between mb-1">
+          <p className="text-xs opacity-70">Remaining balance</p>
           <WalletIcon className="opacity-80 w-8 h-8" />
         </div>
+        <p className={`text-4xl font-bold mb-3 ${balance < 0 ? 'text-red-300' : ''}`}>
+          ${Math.max(0, balance).toFixed(2)}
+        </p>
+
         {/* Progress bar */}
         {hasPool && (
           <div className="mb-3">
             <div className="h-2 bg-white/20 rounded-full overflow-hidden">
               <div
-                className="h-full rounded-full transition-all"
+                className="h-full rounded-full transition-all duration-500"
                 style={{ width: `${pct}%`, background: pct > 90 ? '#ef4444' : 'rgba(255,255,255,0.7)' }}
               />
             </div>
           </div>
         )}
+
         <div className="flex justify-between text-sm">
           <div>
+            <p className="text-xs opacity-70">Budget</p>
+            <p className="font-semibold">${data.poolPerPerson.toFixed(2)}</p>
+          </div>
+          <div className="text-right">
             <p className="text-xs opacity-70">Spent</p>
             <p className="font-semibold">−${totalSpent.toFixed(2)}</p>
           </div>
-          <div className="text-right">
-            <p className="text-xs opacity-70">Remaining</p>
-            <p className={`font-bold text-lg ${balance < 0 ? 'text-red-300' : ''}`}>
-              ${Math.max(0, balance).toFixed(2)}
-            </p>
-          </div>
         </div>
+
         {balance < 0 && (
           <p className="text-xs mt-2 bg-white/10 rounded-lg px-3 py-1.5 text-center">
             Over budget by ${Math.abs(balance).toFixed(2)} — owe admin
