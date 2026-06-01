@@ -27,6 +27,7 @@ export default function AdminTab() {
   const [toggling, setToggling] = useState<string | null>(null)
   const [showAddActivity, setShowAddActivity] = useState(false)
   const [activityForm, setActivityForm] = useState({ icon: '', name: '', estPrice: '', description: '' })
+  const [expandedActivityId, setExpandedActivityId] = useState<string | null>(null)
 
   async function loadData() {
     try {
@@ -370,22 +371,35 @@ export default function AdminTab() {
               <button onClick={seedDefaults} className="text-xs text-primary font-semibold">Seed defaults</button>
             </div>
           )}
-          {activities.map(a => (
-            <div key={a.id} className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-xl">{a.icon || <ActivityIcon />}</span>
-                <div className="flex-1">
+          {activities.map(a => {
+            const isOpen = expandedActivityId === a.id
+            const pendingCount = a.participants.filter(p => p.status === 'PENDING').length
+            return (
+            <div key={a.id} className="bg-white rounded-2xl shadow-sm overflow-hidden">
+              <button
+                onClick={() => setExpandedActivityId(isOpen ? null : a.id)}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left"
+              >
+                <span className="text-xl shrink-0">{a.icon || <ActivityIcon />}</span>
+                <div className="flex-1 min-w-0">
                   <h3 className="text-sm font-semibold text-dark">{a.name}</h3>
                   <p className="text-xs text-muted">
-                    {a.estPrice > 0 ? `$${a.estPrice}/person` : 'Free'} · {a.participants.length} in
+                    {a.estPrice > 0 ? `$${a.estPrice}/person` : 'Free'} · {a.participants.filter(p => p.status === 'APPROVED').length} in
+                    {pendingCount > 0 && <span className="text-amber-500 ml-1">· {pendingCount} pending</span>}
                   </p>
                 </div>
                 {a.isDone && (
-                  <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold">Done</span>
+                  <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-semibold shrink-0">Done</span>
                 )}
-              </div>
+                <svg className={`w-4 h-4 text-muted shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {isOpen && (
+              <div className="border-t border-gray-100 px-4 pb-3 pt-2">
               {joinedUsers.length === 0
-                ? <p className="text-xs text-muted">No crew joined yet.</p>
+                ? <p className="text-xs text-muted py-2">No crew joined yet.</p>
                 : <div className="space-y-1">
                   {joinedUsers.map(u => {
                     const participant = a.participants.find(p => p.userId === u.id)
@@ -450,8 +464,10 @@ export default function AdminTab() {
                   })}
                 </div>
               }
+              </div>
+              )}
             </div>
-          ))}
+          )})}
         </div>
       )}
 
