@@ -161,18 +161,18 @@ export default function SocialTab() {
       </div>
 
       {/* Input */}
-      <div className="px-4 py-3 bg-white border-t border-gray-100 flex gap-2 items-center">
+      <div className="px-4 py-3 bg-white border-t border-gray-100 flex gap-2.5 items-center">
         <input
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
           placeholder="Message the crew..."
-          className="flex-1 px-4 py-2.5 rounded-full bg-background text-dark text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          className="min-w-0 flex-1 px-4 py-2.5 rounded-full bg-background text-dark text-sm border border-transparent focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
         />
         <button
           onClick={send}
           disabled={!text.trim()}
-          className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center disabled:opacity-40 hover:opacity-90 active:scale-95 transition-all text-lg"
+          className="h-10 shrink-0 rounded-full bg-primary px-5 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:bg-primary/35 disabled:shadow-none hover:bg-dark active:scale-95 transition-all"
         >
           Send
         </button>

@@ -27,10 +27,14 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+        <div className="mx-auto mb-8 flex w-full max-w-sm flex-col items-center text-center">
           <div className="text-7xl mb-3">🐸</div>
-          <h1 className="text-3xl font-bold text-dark">Bullfrog Bash</h1>
-          <p className="text-muted mt-1 text-sm">June 16 – 18 · 16 crew members</p>
+          <h1 className="w-full whitespace-nowrap text-center text-[clamp(1.25rem,6vw,2.35rem)] font-black leading-none text-dark">
+            Bullfrog <span className="text-primary">Grazuasion</span> Party
+          </h1>
+          <p className="mx-auto mt-3 max-w-[19rem] text-center text-sm font-black leading-snug text-primary">
+            Caps off, frogs out, and hop the way to the journey of adventure.
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-md p-6">
@@ -80,9 +84,6 @@ export default function Login() {
           </p>
         </div>
 
-        <p className="text-center text-xs text-muted mt-6">
-          Invite-only — contact the admin if you haven't received your invite link.
-        </p>
       </div>
     </div>
   )

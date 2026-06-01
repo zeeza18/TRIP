@@ -35,7 +35,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background flex flex-col max-w-lg mx-auto">
       {/* Fixed header */}
       <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-20 bg-primary text-white px-4 py-3 flex items-center justify-between shadow-md">
-        <span className="text-lg font-bold">Bullfrog Bash 🐸</span>
+        <span className="text-lg font-bold">Bullfrog Grazuasion Party 🐸</span>
         <span className="text-xs opacity-70 bg-white/10 px-2 py-1 rounded-full">{countdown()}</span>
         <button
           onClick={logout}

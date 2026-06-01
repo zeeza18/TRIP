@@ -43,15 +43,17 @@ export default function Onboarding() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-6">
+        <div className="mx-auto mb-6 flex w-full max-w-sm flex-col items-center text-center">
           <div className="text-6xl mb-2">🐸</div>
-          <h1 className="whitespace-nowrap text-[clamp(1.55rem,7vw,2rem)] font-black leading-none text-dark">
+          <h1 className="w-full whitespace-nowrap text-center text-[clamp(1.25rem,6vw,2rem)] font-black leading-none text-dark">
             Bullfrog <span className="text-primary">Grazuasion</span> Party
           </h1>
           <div className="mt-3 inline-flex -rotate-1 rounded-full bg-secondary px-3.5 py-1.5 text-[10px] font-black uppercase text-dark shadow-sm">
-            Lilypad admission office
+            Masters. No diploma.
           </div>
-          <p className="text-primary text-sm font-black leading-snug mt-3">Claim your diploma party credentials.</p>
+          <p className="mx-auto mt-3 max-w-[19rem] text-center text-sm font-black leading-snug text-primary">
+            Caps off, frogs out, and hop the way to the journey of adventure.
+          </p>
         </div>
 
         {/* Progress dots */}
