@@ -257,8 +257,6 @@ export default function Login() {
                   strokeWidth="7"
                   strokeLinecap="round"
                 />
-                {/* Tongue tip bulb (visible when tongue out) */}
-                <circle className="frog-tongue-svg" cx="198" cy="46" r="5" fill="#e8357a" opacity="0.85"/>
               </g>
 
               {/* === FLY (starts off-right, animated in) === */}
