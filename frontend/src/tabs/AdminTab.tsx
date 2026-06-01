@@ -402,9 +402,6 @@ export default function AdminTab() {
                         {isPending && (
                           <span className="text-[10px] text-amber-600 font-semibold shrink-0">Requested</span>
                         )}
-                        {isApproved && a.estPrice > 0 && (
-                          <span className="text-xs font-semibold text-secondary shrink-0">${count * a.estPrice}</span>
-                        )}
                         {/* Controls — pending can always be approved even on done activities */}
                         {isPending && (
                           <button

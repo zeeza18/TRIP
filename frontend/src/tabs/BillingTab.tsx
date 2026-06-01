@@ -58,9 +58,10 @@ export default function BillingTab() {
   if (loading) return <div className="flex justify-center py-20">Loading...</div>
   if (!data) return null
 
-  const balance = data.poolPerPerson - data.total
+  const totalSpent = data.total + data.pendingActivityCost
+  const balance = data.poolPerPerson - totalSpent
   const hasPool = data.poolPerPerson > 0
-  const pct = hasPool ? Math.min(100, (data.total / data.poolPerPerson) * 100) : 0
+  const pct = hasPool ? Math.min(100, (totalSpent / data.poolPerPerson) * 100) : 0
 
   return (
     <div className="px-4 py-4">
@@ -89,7 +90,7 @@ export default function BillingTab() {
         <div className="flex justify-between text-sm">
           <div>
             <p className="text-xs opacity-70">Spent</p>
-            <p className="font-semibold">−${data.total.toFixed(2)}</p>
+            <p className="font-semibold">−${totalSpent.toFixed(2)}</p>
           </div>
           <div className="text-right">
             <p className="text-xs opacity-70">Remaining</p>
