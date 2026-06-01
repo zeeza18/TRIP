@@ -533,6 +533,7 @@ app.patch('/notifications/read-all', authMiddleware, async (req: AuthRequest, re
 // ─── SOCKET.IO ──────────────────────────────────────────────────────────────
 
 const onlineUsers = new Map<string, string>()
+const typingUsers = new Map<string, { name: string; timer: ReturnType<typeof setTimeout> }>()
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token
@@ -568,9 +569,61 @@ io.on('connection', (socket) => {
     } catch {}
   })
 
+  socket.on('message:delete', async (data: { messageId: string }) => {
+    try {
+      const msg = await prisma.message.findUnique({ where: { id: data.messageId } })
+      if (!msg || msg.senderId !== userId) return
+      await prisma.reaction.deleteMany({ where: { messageId: data.messageId } })
+      await prisma.message.delete({ where: { id: data.messageId } })
+      io.emit('message:delete', { messageId: data.messageId })
+    } catch {}
+  })
+
+  socket.on('message:edit', async (data: { messageId: string; body: string }) => {
+    if (!data.body?.trim()) return
+    try {
+      const msg = await prisma.message.findUnique({ where: { id: data.messageId } })
+      if (!msg || msg.senderId !== userId) return
+      const updated = await prisma.message.update({
+        where: { id: data.messageId },
+        data: { body: data.body.trim() },
+        include: { sender: { select: { id: true, name: true, email: true } }, reactions: true }
+      })
+      io.emit('message:edit', updated)
+    } catch {}
+  })
+
+  socket.on('typing:start', async () => {
+    try {
+      const u = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } })
+      if (!u) return
+      const name = u.name || u.email.split('@')[0]
+      if (typingUsers.has(userId)) clearTimeout(typingUsers.get(userId)!.timer)
+      const timer = setTimeout(() => {
+        typingUsers.delete(userId)
+        socket.broadcast.emit('typing:update', Array.from(typingUsers.values()).map(v => v.name))
+      }, 3000)
+      typingUsers.set(userId, { name, timer })
+      socket.broadcast.emit('typing:update', Array.from(typingUsers.values()).map(v => v.name))
+    } catch {}
+  })
+
+  socket.on('typing:stop', () => {
+    if (typingUsers.has(userId)) {
+      clearTimeout(typingUsers.get(userId)!.timer)
+      typingUsers.delete(userId)
+    }
+    socket.broadcast.emit('typing:update', Array.from(typingUsers.values()).map(v => v.name))
+  })
+
   socket.on('disconnect', () => {
     onlineUsers.delete(socket.id)
     io.emit('users:online', Array.from(new Set(onlineUsers.values())))
+    if (typingUsers.has(userId)) {
+      clearTimeout(typingUsers.get(userId)!.timer)
+      typingUsers.delete(userId)
+      socket.broadcast.emit('typing:update', Array.from(typingUsers.values()).map(v => v.name))
+    }
   })
 })
 
