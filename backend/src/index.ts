@@ -22,7 +22,7 @@ app.use(express.json({ limit: '10mb' }))
 const PORT = process.env.PORT || 4000
 const JWT_SECRET = process.env.JWT_SECRET || 'change_me'
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
-const FROM_EMAIL = process.env.FROM_EMAIL || 'Bullfrog Bash <onboarding@resend.dev>'
+const FROM_EMAIL = process.env.FROM_EMAIL || 'Grazuasion Party <onboarding@resend.dev>'
 const resend = new Resend(process.env.RESEND_API_KEY || '')
 
 // ─── AUTH ──────────────────────────────────────────────────────────────────
@@ -69,7 +69,7 @@ app.post('/auth/register', async (req: any, res: any) => {
     try {
       await resend.emails.send({
         from: FROM_EMAIL, to: [admin.email],
-        subject: `🐸 ${name || email} just joined Bullfrog Bash!`,
+        subject: `🐸 ${name || email} just joined the Grazuasion Party!`,
         html: `<p><strong>${name || email}</strong> has set up their account!</p>`
       })
     } catch {}
@@ -89,12 +89,12 @@ app.post('/auth/forgot-password', async (req: any, res: any) => {
   try {
     await resend.emails.send({
       from: FROM_EMAIL, to: [email],
-      subject: 'Reset your Bullfrog Bash password',
+      subject: 'Reset your Grazuasion Party password',
       html: `
         <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
           <div style="background:#1F6F4A;padding:44px 36px;text-align:center">
             <div style="font-size:52px;margin-bottom:10px">🐸</div>
-            <div style="color:#A7F3D0;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;margin-bottom:14px">Bullfrog Bash</div>
+            <div style="color:#A7F3D0;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;margin-bottom:14px">Grazuasion Party</div>
             <h1 style="color:#ffffff;font-size:24px;font-weight:800;margin:0;line-height:1.3">Password Reset</h1>
           </div>
           <div style="padding:36px 36px 24px">
@@ -109,7 +109,7 @@ app.post('/auth/forgot-password', async (req: any, res: any) => {
             <p style="color:#9CA3AF;font-size:12px;text-align:center;margin:16px 0 0">If you didn't request this, you can safely ignore this email.</p>
           </div>
           <div style="background:#F9FAFB;padding:20px 36px;text-align:center;border-top:1px solid #E5E7EB">
-            <div style="color:#9CA3AF;font-size:12px">Bullfrog Bash · June 16 - 18, 2026 · Bullfrog Lake, IL</div>
+            <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16 - 18, 2026 · Bullfrog Lake, IL</div>
           </div>
         </div>`
     })
@@ -210,7 +210,7 @@ app.post('/admin/send-invite', authMiddleware, adminOnly, async (req: AuthReques
         <div style="font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
           <div style="background:#1F6F4A;padding:44px 36px;text-align:center">
             <div style="font-size:52px;margin-bottom:10px">🐸</div>
-            <div style="color:#A7F3D0;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;margin-bottom:14px">Bullfrog Bash</div>
+            <div style="color:#A7F3D0;font-size:11px;font-weight:700;letter-spacing:4px;text-transform:uppercase;margin-bottom:14px">Grazuasion Party</div>
             <h1 style="color:#ffffff;font-size:26px;font-weight:800;margin:0;line-height:1.3">Their Educasion<br>is Grazuasion</h1>
           </div>
           <div style="padding:36px 36px 24px">
@@ -230,7 +230,7 @@ app.post('/admin/send-invite', authMiddleware, adminOnly, async (req: AuthReques
             <p style="color:#D1D5DB;font-size:12px;text-align:center;margin:16px 0 0">This link is just for you. Don't share it.</p>
           </div>
           <div style="background:#F9FAFB;padding:20px 36px;text-align:center;border-top:1px solid #E5E7EB">
-            <div style="color:#9CA3AF;font-size:12px">Bullfrog Bash · June 16 - 18, 2026 · Bullfrog Lake, IL</div>
+            <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16 - 18, 2026 · Bullfrog Lake, IL</div>
           </div>
         </div>`
     })
@@ -249,7 +249,7 @@ app.post('/admin/notify-all', authMiddleware, adminOnly, async (req: AuthRequest
         from: FROM_EMAIL, to: [user.email], subject,
         html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
           <h2 style="color:#1F6F4A">${subject}</h2><p>${body}</p>
-          <p style="color:#9CA3AF;font-size:12px">Bullfrog Bash 🐸 — June 16–18</p></div>`
+          <p style="color:#9CA3AF;font-size:12px">Grazuasion Party 🐸 — June 16–18</p></div>`
       })
       await prisma.notification.create({ data: { userId: user.id, title: subject, body } })
     } catch {}
@@ -403,17 +403,67 @@ app.post('/admin/activities/:id/add-user/:userId', authMiddleware, adminOnly, as
   const activityId = req.params.id
   const userId = req.params.userId
   const existing = await prisma.participation.findUnique({ where: { activityId_userId: { activityId, userId } } })
-  const activity = await prisma.activity.findUnique({ where: { id: activityId }, select: { name: true, estPrice: true } })
+  const [activity, targetUser] = await Promise.all([
+    prisma.activity.findUnique({ where: { id: activityId }, select: { name: true, estPrice: true } }),
+    prisma.user.findUnique({ where: { id: userId }, select: { email: true, name: true } }),
+  ])
+  const actName = activity?.name ?? 'the activity'
+  const price = activity?.estPrice ?? 0
   if (existing) {
     if (existing.status === 'PENDING') {
       await prisma.participation.update({ where: { activityId_userId: { activityId, userId } }, data: { status: 'APPROVED', count: 1 } })
-      await prisma.notification.create({ data: { userId, title: 'Request approved!', body: `You\'re in for ${activity?.name}${activity?.estPrice ? ` — $${activity.estPrice} added when done` : ''}` } })
+      await prisma.notification.create({ data: { userId, title: 'Request approved!', body: `You're in for ${actName}${price ? ` — $${price} added when done` : ''}` } })
       io.emit('billing:update', {})
+      if (targetUser) {
+        try {
+          await resend.emails.send({
+            from: FROM_EMAIL, to: [targetUser.email],
+            subject: `You're in! 🐸 ${actName} is confirmed`,
+            html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+              <div style="background:#1F6F4A;padding:36px;text-align:center">
+                <div style="font-size:48px;margin-bottom:8px">🐸</div>
+                <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0">You're officially in!</h1>
+              </div>
+              <div style="padding:28px 32px">
+                <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 8px">Hey ${targetUser.name || targetUser.email.split('@')[0]}!</p>
+                <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px">Your request for <strong>${actName}</strong> has been approved by the admin. You're locked in — get pumped! 🎉</p>
+                ${price ? `<div style="background:#F0FDF4;border-left:4px solid #1F6F4A;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px"><p style="color:#1F6F4A;font-weight:700;margin:0">Cost: $${price}/spot</p><p style="color:#6B7280;font-size:13px;margin:4px 0 0">Added to your tab when the activity is marked done.</p></div>` : ''}
+                <p style="color:#6B7280;font-size:13px;line-height:1.6;margin:0">Check the app to see your updated wallet balance.</p>
+              </div>
+              <div style="background:#F9FAFB;padding:16px 32px;text-align:center;border-top:1px solid #E5E7EB">
+                <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+              </div>
+            </div>`
+          })
+        } catch {}
+      }
       return res.json({ status: 'APPROVED', count: 1 })
     }
     const updated = await prisma.participation.update({ where: { activityId_userId: { activityId, userId } }, data: { count: { increment: 1 } } })
-    await prisma.notification.create({ data: { userId, title: 'Spot added!', body: `You now have ${updated.count} spot${updated.count > 1 ? 's' : ''} for ${activity?.name}` } })
+    await prisma.notification.create({ data: { userId, title: 'Spot added!', body: `You now have ${updated.count} spot${updated.count > 1 ? 's' : ''} for ${actName}` } })
     io.emit('billing:update', {})
+    if (targetUser) {
+      try {
+        await resend.emails.send({
+          from: FROM_EMAIL, to: [targetUser.email],
+          subject: `Extra spot confirmed! 🐸 ${actName}`,
+          html: `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+            <div style="background:#1F6F4A;padding:36px;text-align:center">
+              <div style="font-size:48px;margin-bottom:8px">🐸</div>
+              <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0">Extra spot added!</h1>
+            </div>
+            <div style="padding:28px 32px">
+              <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 8px">Hey ${targetUser.name || targetUser.email.split('@')[0]}!</p>
+              <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px">Your extra spot for <strong>${actName}</strong> has been added. You now have <strong>${updated.count} spot${updated.count > 1 ? 's' : ''}</strong>.</p>
+              ${price ? `<p style="color:#6B7280;font-size:13px">Total for this activity: <strong>$${updated.count * price}</strong> — added to your tab when done.</p>` : ''}
+            </div>
+            <div style="background:#F9FAFB;padding:16px 32px;text-align:center;border-top:1px solid #E5E7EB">
+              <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+            </div>
+          </div>`
+        })
+      } catch {}
+    }
     return res.json({ status: 'APPROVED', count: updated.count })
   }
   await prisma.participation.create({ data: { activityId, userId, status: 'APPROVED', count: 1 } })
@@ -457,7 +507,10 @@ app.post('/activities/:id/request', authMiddleware, async (req: AuthRequest, res
     return res.json({ status: 'wants_more', count: existing.count })
   }
   await prisma.participation.create({ data: { activityId, userId, status: 'PENDING', count: 0 } })
-  if (admin) await prisma.notification.create({ data: { userId: admin.id, title: 'Activity request', body: `${requester?.name || requester?.email} wants to join ${activity?.name}` } })
+  if (admin) {
+    await prisma.notification.create({ data: { userId: admin.id, title: 'Activity request', body: `${requester?.name || requester?.email} wants to join ${activity?.name}` } })
+    io.emit('notification:new', { title: 'Activity request', body: `${requester?.name || requester?.email} wants to join ${activity?.name}` })
+  }
   res.json({ status: 'pending', count: 0 })
 })
 
@@ -692,6 +745,6 @@ async function ensureAdmin() {
 }
 
 server.listen(PORT, async () => {
-  console.log(`🐸 Bullfrog Bash backend on :${PORT}`)
+  console.log(`🐸 Grazuasion Party backend on :${PORT}`)
   await ensureAdmin()
 })

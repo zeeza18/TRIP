@@ -93,7 +93,7 @@ export default function BillingTab() {
           <WalletIcon className="opacity-80 w-8 h-8" />
         </div>
         <p className={`text-4xl font-bold mb-3 ${balance < 0 ? 'text-red-300' : ''}`}>
-          ${Math.max(0, balance).toFixed(2)}
+          {balance < 0 ? '-' : ''}${Math.abs(balance).toFixed(2)}
         </p>
 
         {/* Progress bar */}
