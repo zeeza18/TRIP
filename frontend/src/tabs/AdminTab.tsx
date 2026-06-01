@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 interface ApprovedEmail { id: string; email: string; invited: boolean }
 interface UserRow { id: string; email: string; name: string | null; phone: string | null; boozePref: string | null; onboarded: boolean; idProof: string | null; role: string }
 interface BillingSummary { id: string; name: string | null; email: string; totalCharged: number; poolPerPerson: number; balance: number }
-interface ActivityRow { id: string; name: string; estPrice: number; icon: string | null; description: string | null; isDone: boolean; participants: { userId: string; name: string | null; email: string; status: string }[] }
+interface ActivityRow { id: string; name: string; estPrice: number; icon: string | null; description: string | null; isDone: boolean; participants: { userId: string; name: string | null; email: string; status: string; count: number }[] }
 
 const CATEGORIES = ['Accommodation', 'Transport', 'Food', 'Activity', 'Drinks', 'Other']
 
