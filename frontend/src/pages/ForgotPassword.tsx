@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../api'
+import FrogScene from '../components/FrogScene'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
@@ -25,7 +26,7 @@ export default function ForgotPassword() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mx-auto mb-8 flex w-full max-w-sm flex-col items-center text-center">
-          <div className="text-7xl mb-3">🐸</div>
+          <FrogScene />
           <h1 className="w-full whitespace-nowrap text-center text-[clamp(1.25rem,6vw,2.35rem)] font-black leading-none text-dark">
             Bullfrog <span className="text-primary">Grazuasion</span> Party
           </h1>
