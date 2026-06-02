@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { api } from '../api'
+import { useAuth } from '../contexts/AuthContext'
 import FrogScene from '../components/FrogScene'
 
 type Step = 1 | 2 | 3
 
 export default function Onboarding() {
   const navigate = useNavigate()
+  const { logout } = useAuth()
   const [params] = useSearchParams()
   const emailParam = params.get('email') || ''
 
@@ -33,6 +35,7 @@ export default function Onboarding() {
     setLoading(true)
     try {
       await api.post('/auth/register', { email, password, name, phone, boozePref: booze, idProof })
+      logout()
       toast.success('Account created! Please log in.')
       navigate('/')
     } catch (err: any) {
