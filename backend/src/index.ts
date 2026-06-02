@@ -692,6 +692,13 @@ app.post('/announcements', authMiddleware, adminOnly, async (req: AuthRequest, r
   res.json(item)
 })
 
+app.delete('/announcements/:id', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { id } = req.params
+  await prisma.announcement.delete({ where: { id } })
+  io.emit('announcement:delete', { id })
+  res.json({ ok: true })
+})
+
 // ─── NOTIFICATIONS ─────────────────────────────────────────────────────────
 
 app.get('/notifications', authMiddleware, async (req: AuthRequest, res: any) => {

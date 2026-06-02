@@ -79,12 +79,20 @@ function showNotification(title: string, body: string) {
   }
 }
 
+const DISMISSED_KEY = 'dismissedAnnouncements'
+function getDismissed(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(DISMISSED_KEY) || '[]')) } catch { return new Set() }
+}
+function saveDismissed(set: Set<string>) {
+  localStorage.setItem(DISMISSED_KEY, JSON.stringify([...set]))
+}
+
 export default function SocialTab() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [onlineCount, setOnlineCount] = useState(0)
-  const [dismissedAnnouncement, setDismissedAnnouncement] = useState<string | null>(null)
+  const [dismissed, setDismissed] = useState<Set<string>>(getDismissed)
   const [text, setText] = useState('')
   const [actionFor, setActionFor] = useState<string | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -130,6 +138,10 @@ export default function SocialTab() {
     socket.on('announcement:new', (a: Announcement) => {
       setAnnouncements(prev => [a, ...prev])
       toast(a.title)
+    })
+
+    socket.on('announcement:delete', ({ id }: { id: string }) => {
+      setAnnouncements(prev => prev.filter(a => a.id !== id))
     })
 
     socket.on('typing:update', (names: string[]) => setTypingNames(names))
@@ -196,6 +208,20 @@ export default function SocialTab() {
     e.target.value = ''
   }
 
+  async function dismissAnnouncement(id: string) {
+    if (isAdmin) {
+      try {
+        await api.delete(`/announcements/${id}`)
+        setAnnouncements(prev => prev.filter(a => a.id !== id))
+      } catch { toast.error('Could not delete announcement') }
+    } else {
+      const next = new Set(dismissed)
+      next.add(id)
+      setDismissed(next)
+      saveDismissed(next)
+    }
+  }
+
   const latestAnnouncement = announcements[0]
 
   return (
@@ -212,13 +238,13 @@ export default function SocialTab() {
       </div>
 
       {/* Announcement banner */}
-      {latestAnnouncement && latestAnnouncement.id !== dismissedAnnouncement && (
+      {latestAnnouncement && !dismissed.has(latestAnnouncement.id) && (
         <div className="mx-3 mt-2 bg-secondary/15 border border-secondary/30 rounded-xl p-3 flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-dark">{latestAnnouncement.title}</p>
             <p className="text-xs text-muted mt-0.5 truncate">{latestAnnouncement.body}</p>
           </div>
-          <button onClick={() => setDismissedAnnouncement(latestAnnouncement.id)} className="text-muted text-sm shrink-0 leading-none">×</button>
+          <button onClick={() => dismissAnnouncement(latestAnnouncement.id)} className="text-muted text-sm shrink-0 leading-none">×</button>
         </div>
       )}
 
