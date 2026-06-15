@@ -105,11 +105,39 @@ export default function Onboarding() {
                     onChange={e => {
                       const file = e.target.files?.[0]
                       if (!file) return
-                      if (file.size > 5 * 1024 * 1024) { toast.error('File must be under 5MB'); return }
                       setIdProofName(file.name)
-                      const reader = new FileReader()
-                      reader.onload = ev => setIdProof(ev.target?.result as string)
-                      reader.readAsDataURL(file)
+                      if (file.type.startsWith('image/')) {
+                        if (file.size > 20 * 1024 * 1024) { toast.error('Image must be under 20MB'); return }
+                        const img = new Image()
+                        const url = URL.createObjectURL(file)
+                        img.onload = () => {
+                          const MAX = 1000
+                          let { width, height } = img
+                          if (width > MAX || height > MAX) {
+                            if (width > height) { height = Math.round(height * MAX / width); width = MAX }
+                            else { width = Math.round(width * MAX / height); height = MAX }
+                          }
+                          const canvas = document.createElement('canvas')
+                          canvas.width = width; canvas.height = height
+                          canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+                          URL.revokeObjectURL(url)
+                          // Iteratively reduce quality until base64 output is under 700KB
+                          let q = 0.82
+                          let result = canvas.toDataURL('image/jpeg', q)
+                          while (result.length > 700 * 1024 && q > 0.3) {
+                            q = Math.round((q - 0.1) * 10) / 10
+                            result = canvas.toDataURL('image/jpeg', q)
+                          }
+                          setIdProof(result)
+                        }
+                        img.src = url
+                      } else {
+                        // PDF — can't compress in browser; enforce strict limit
+                        if (file.size > 700 * 1024) { toast.error('PDF must be under 700 KB — try a scanned photo instead'); return }
+                        const reader = new FileReader()
+                        reader.onload = ev => setIdProof(ev.target?.result as string)
+                        reader.readAsDataURL(file)
+                      }
                     }}
                   />
                   {idProof
