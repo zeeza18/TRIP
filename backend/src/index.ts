@@ -694,6 +694,28 @@ io.on('connection', (socket) => {
       include: { sender: { select: { id: true, name: true, email: true } }, reactions: true }
     })
     io.emit('message:new', message)
+    try {
+      const senderName = message.sender.name || message.sender.email.split('@')[0]
+      const preview = message.body.length > 80 ? message.body.slice(0, 80) + '…' : message.body
+      const others = await prisma.user.findMany({ where: { onboarded: true, NOT: { id: userId } }, select: { id: true, email: true } })
+      for (const user of others)
+        await prisma.notification.create({ data: { userId: user.id, title: `${senderName} in Social`, body: preview } })
+      socket.broadcast.emit('notification:new', { title: `${senderName} in Social`, body: preview })
+      await sendBulkEmail(others, `💬 ${senderName} sent a message`,
+        () => `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+          <div style="background:#1F6F4A;padding:32px;text-align:center">
+            <div style="font-size:40px;margin-bottom:8px">💬</div>
+            <h1 style="color:#fff;font-size:20px;font-weight:800;margin:0">${senderName} sent a message</h1>
+          </div>
+          <div style="padding:24px 32px">
+            <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 12px">"${preview}"</p>
+            <p style="color:#6B7280;font-size:13px;margin:0">Open the app to reply.</p>
+          </div>
+          <div style="background:#F9FAFB;padding:14px 32px;text-align:center;border-top:1px solid #E5E7EB">
+            <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+          </div>
+        </div>`)
+    } catch {}
   })
 
   socket.on('reaction:add', async (data: { messageId: string; emoji: string }) => {
