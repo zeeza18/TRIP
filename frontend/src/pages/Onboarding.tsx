@@ -36,8 +36,7 @@ export default function Onboarding() {
     try {
       await api.post('/auth/register', { email, password, name, phone, boozePref: booze, idProof })
       await login(email, password)
-      toast.success('Welcome to the party! 🐸')
-      navigate('/dashboard')
+      navigate('/welcome')
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Registration failed')
     } finally {
