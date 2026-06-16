@@ -816,12 +816,13 @@ async function ensureAdmin() {
 async function checkUpcomingItinerary() {
   try {
     const now = new Date()
-    const soon = new Date(now.getTime() + 60 * 60 * 1000) // 60 min from now
+    const soon = new Date(now.getTime() + 30 * 60 * 1000) // 30 min from now
     const items = await prisma.itineraryItem.findMany({ where: { notified: false } })
     for (const item of items) {
       const m = item.time?.match(/^(\d{1,2}):(\d{2})$/)
       if (!m) continue
-      const itemDate = new Date(`${item.date}T${item.time}:00`)
+      // Times are entered in CDT (Illinois, UTC-5); append offset so the server (UTC) parses correctly
+      const itemDate = new Date(`${item.date}T${item.time}:00-05:00`)
       if (itemDate > now && itemDate <= soon) {
         await prisma.itineraryItem.update({ where: { id: item.id }, data: { notified: true } })
         const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, email: true } })
@@ -855,6 +856,6 @@ async function checkUpcomingItinerary() {
 server.listen(PORT, async () => {
   console.log(`🐸 Grazuasion Party backend on :${PORT}`)
   await ensureAdmin()
-  // Check every 30 minutes for items approaching in the next 60 min
+  // Check every 30 minutes for items approaching in the next 30 min
   setInterval(checkUpcomingItinerary, 30 * 60 * 1000)
 })
