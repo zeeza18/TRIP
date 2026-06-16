@@ -22,7 +22,7 @@ function countdown() {
 
 export default function Dashboard() {
   const { user, isAdmin, logout } = useAuth()
-  const [tab, setTab] = useState<Tab>('itinerary')
+  const [tab, setTab] = useState<Tab>(() => (localStorage.getItem('activeTab') as Tab) || 'itinerary')
   const [notifCount, setNotifCount] = useState(0)
   const socketRef = useRef<Socket | null>(null)
 
@@ -59,6 +59,7 @@ export default function Dashboard() {
 
   function switchTab(t: Tab) {
     setTab(t)
+    localStorage.setItem('activeTab', t)
     if (t === 'admin' && notifCount > 0) markRead()
   }
 
