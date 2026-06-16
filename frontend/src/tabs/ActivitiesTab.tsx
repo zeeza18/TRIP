@@ -75,6 +75,12 @@ export default function ActivitiesTab() {
 
   useEffect(() => { load() }, [])
 
+  useEffect(() => {
+    const handler = () => load()
+    window.addEventListener('activity:reload', handler)
+    return () => window.removeEventListener('activity:reload', handler)
+  }, [])
+
   async function sendRequest(id: string, currentStatus: 'none' | 'pending' | 'approved') {
     setBusy(id)
     try {

@@ -71,6 +71,12 @@ export default function ItineraryTab() {
 
   useEffect(() => { load() }, [])
 
+  useEffect(() => {
+    const handler = () => load()
+    window.addEventListener('itinerary:reload', handler)
+    return () => window.removeEventListener('itinerary:reload', handler)
+  }, [])
+
   async function addItem() {
     if (!form.title) { toast.error('Title is required'); return }
     const order = timeToMinutes(form.time) ?? 9999

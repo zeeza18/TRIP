@@ -48,6 +48,8 @@ export default function Dashboard() {
     const socket = io(import.meta.env.VITE_API_URL || 'http://localhost:4001', { auth: { token } })
     socketRef.current = socket
     socket.on('notification:new', () => setNotifCount(c => c + 1))
+    socket.on('itinerary:update', () => window.dispatchEvent(new Event('itinerary:reload')))
+    socket.on('activity:update', () => window.dispatchEvent(new Event('activity:reload')))
 
     return () => {
       clearInterval(poll)
