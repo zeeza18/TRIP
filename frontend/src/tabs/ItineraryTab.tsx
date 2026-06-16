@@ -31,7 +31,10 @@ function timeToMinutes(t: string | null): number | null {
 
 function isPast(date: string, time: string | null): boolean {
   const now = new Date()
-  const today = now.toISOString().slice(0, 10)
+  const y = now.getFullYear()
+  const mo = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  const today = `${y}-${mo}-${d}`
   if (date < today) return true
   if (date > today) return false
   if (!time) return false
