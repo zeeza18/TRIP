@@ -87,7 +87,7 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background flex flex-col max-w-lg mx-auto">
       {/* Fixed header */}
       <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-lg z-20 bg-primary text-white px-4 py-3 flex items-center justify-between shadow-md">
-        <span className="text-lg font-bold">Bullfrog Grazuasion Party 🐸</span>
+        <span className="text-lg font-bold min-w-0 flex-1 truncate mr-3">Bullfrog Grazuasion Party 🐸</span>
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowInfo(true)}
