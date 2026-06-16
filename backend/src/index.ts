@@ -708,8 +708,8 @@ io.on('connection', (socket) => {
       const preview = message.body.length > 80 ? message.body.slice(0, 80) + '…' : message.body
       const others = await prisma.user.findMany({ where: { onboarded: true, NOT: { id: userId } }, select: { id: true, email: true } })
       for (const user of others)
-        await prisma.notification.create({ data: { userId: user.id, title: `${senderName} in Social`, body: preview } })
-      socket.broadcast.emit('notification:new', { title: `${senderName} in Social`, body: preview })
+        await prisma.notification.create({ data: { userId: user.id, title: 'New message in Social', body: `${senderName} sent a message` } })
+      socket.broadcast.emit('notification:new', { title: 'New message in Social', body: `${senderName} sent a message` })
       await sendBulkEmail(others, `💬 ${senderName} sent a message`,
         () => `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
           <div style="background:#1F6F4A;padding:32px;text-align:center">
