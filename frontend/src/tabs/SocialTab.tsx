@@ -8,6 +8,7 @@ interface Reaction { id: string; messageId: string; userId: string; emoji: strin
 interface Sender { id: string; name: string | null; email: string }
 interface Message { id: string; senderId: string; sender: Sender; body: string; createdAt: string; reactions: Reaction[] }
 interface Announcement { id: string; title: string; body: string }
+interface Member { id: string; name: string | null; email: string }
 
 const EMOJIS = ['🐸']
 
@@ -92,6 +93,9 @@ export default function SocialTab() {
   const [messages, setMessages] = useState<Message[]>([])
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [onlineCount, setOnlineCount] = useState(0)
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set())
+  const [showCrew, setShowCrew] = useState(false)
+  const [members, setMembers] = useState<Member[]>([])
   const [dismissed, setDismissed] = useState<Set<string>>(getDismissed)
   const [text, setText] = useState('')
   const [actionFor, setActionFor] = useState<string | null>(null)
@@ -133,7 +137,10 @@ export default function SocialTab() {
       setMessages(prev => prev.map(m => m.id === messageId ? { ...m, reactions } : m))
     })
 
-    socket.on('users:online', (ids: string[]) => setOnlineCount(ids.length))
+    socket.on('users:online', (ids: string[]) => {
+      setOnlineCount(ids.length)
+      setOnlineIds(new Set(ids))
+    })
 
     socket.on('announcement:new', (a: Announcement) => {
       setAnnouncements(prev => [a, ...prev])
@@ -208,6 +215,11 @@ export default function SocialTab() {
     e.target.value = ''
   }
 
+  async function loadMembers() {
+    if (members.length > 0) return
+    try { const res = await api.get('/users'); setMembers(res.data) } catch {}
+  }
+
   async function dismissAnnouncement(id: string) {
     if (isAdmin) {
       try {
@@ -235,7 +247,55 @@ export default function SocialTab() {
             <span className="text-[11px] text-muted">{onlineCount} online</span>
           </div>
         </div>
+        <button
+          onClick={() => { setShowCrew(true); loadMembers() }}
+          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-muted hover:text-primary hover:bg-primary/10 transition-colors"
+          title="View crew"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m6-4.13a4 4 0 10-8 0 4 4 0 008 0zm6 0a3 3 0 10-6 0 3 3 0 006 0z" />
+          </svg>
+        </button>
       </div>
+
+      {/* Crew panel */}
+      {showCrew && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={() => setShowCrew(false)}>
+          <div className="absolute inset-0 bg-black/30" />
+          <div
+            className="relative w-full max-w-lg bg-white rounded-t-2xl px-4 pt-4 pb-8 max-h-[70vh] flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-dark text-base">Trip Crew</h3>
+              <button onClick={() => setShowCrew(false)} className="text-muted text-xl leading-none">×</button>
+            </div>
+            <div className="overflow-y-auto space-y-1">
+              {members.length === 0 && <p className="text-sm text-muted text-center py-6">Loading...</p>}
+              {members.map(m => {
+                const online = onlineIds.has(m.id)
+                const label = m.name || m.email.split('@')[0]
+                const initls = label.split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
+                return (
+                  <div key={m.id} className="flex items-center gap-3 py-2 px-2 rounded-xl hover:bg-gray-50">
+                    <div className="relative shrink-0">
+                      <div className="w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center text-xs font-bold text-primary">
+                        {initls}
+                      </div>
+                      {online && <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-green-400 border-2 border-white" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-dark truncate">{label}</p>
+                      {m.name && <p className="text-[11px] text-muted truncate">{m.email}</p>}
+                    </div>
+                    {online && <span className="text-[10px] font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">online</span>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Announcement banner */}
       {latestAnnouncement && !dismissed.has(latestAnnouncement.id) && (

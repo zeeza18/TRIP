@@ -115,6 +115,15 @@ app.post('/auth/reset-password', async (req: any, res: any) => {
   res.json({ ok: true })
 })
 
+app.get('/users', authMiddleware, async (_req: AuthRequest, res: any) => {
+  const users = await prisma.user.findMany({
+    where: { onboarded: true },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: 'asc' }
+  })
+  res.json(users)
+})
+
 app.get('/users/me', authMiddleware, async (req: AuthRequest, res: any) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user?.sub },
