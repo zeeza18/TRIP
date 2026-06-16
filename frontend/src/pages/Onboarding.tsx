@@ -9,7 +9,7 @@ type Step = 1 | 2 | 3
 
 export default function Onboarding() {
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { login } = useAuth()
   const [params] = useSearchParams()
   const emailParam = params.get('email') || ''
 
@@ -35,9 +35,9 @@ export default function Onboarding() {
     setLoading(true)
     try {
       await api.post('/auth/register', { email, password, name, phone, boozePref: booze, idProof })
-      logout()
-      toast.success('Account created! Please log in.')
-      navigate('/')
+      await login(email, password)
+      toast.success('Welcome to the party! 🐸')
+      navigate('/dashboard')
     } catch (err: any) {
       toast.error(err?.response?.data?.error || 'Registration failed')
     } finally {
