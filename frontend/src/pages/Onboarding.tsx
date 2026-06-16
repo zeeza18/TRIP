@@ -96,11 +96,11 @@ export default function Onboarding() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-dark mb-1">ID Proof <span className="text-muted font-normal">(driver's license or passport)</span></label>
-                <label className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${idProof ? 'border-primary bg-green-50' : 'border-gray-200 bg-white hover:border-primary'}`}>
+                <label className={`relative flex items-center gap-3 w-full px-3 py-2.5 rounded-xl border cursor-pointer transition-all ${idProof ? 'border-primary bg-green-50' : 'border-gray-200 bg-white hover:border-primary'}`}>
                   <input
                     type="file"
-                    accept="image/*,.pdf"
-                    className="hidden"
+                    accept="image/*,application/pdf"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     onChange={e => {
                       const file = e.target.files?.[0]
                       if (!file) return
