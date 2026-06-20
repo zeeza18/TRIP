@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 
 interface ApprovedEmail { id: string; email: string; invited: boolean }
 interface UserRow { id: string; email: string; name: string | null; phone: string | null; boozePref: string | null; onboarded: boolean; idProof: string | null; role: string }
-interface BillingSummary { id: string; name: string | null; email: string; totalCharged: number; poolPerPerson: number; balance: number }
+interface BillingSummary { id: string; name: string | null; email: string; totalCharged: number; poolPerPerson: number; paymentAmount: number | null; defaultAmount: number; balance: number }
 interface ActivityRow { id: string; name: string; estPrice: number; icon: string | null; description: string | null; isDone: boolean; participants: { userId: string; name: string | null; email: string; status: string; count: number }[] }
 
 const CATEGORIES = ['Accommodation', 'Transport', 'Food', 'Activity', 'Drinks', 'Other']
@@ -23,7 +23,9 @@ export default function AdminTab() {
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
   const [notifForm, setNotifForm] = useState({ subject: '', body: '' })
   const [sending, setSending] = useState(false)
-  const [section, setSection] = useState<'crew' | 'activities' | 'expenses' | 'announce'>('crew')
+  const [section, setSection] = useState<'crew' | 'activities' | 'expenses' | 'payments' | 'announce'>('crew')
+  const [paymentInputs, setPaymentInputs] = useState<Record<string, string>>({})
+  const [savingPaymentId, setSavingPaymentId] = useState<string | null>(null)
   const [toggling, setToggling] = useState<string | null>(null)
   const [showAddActivity, setShowAddActivity] = useState(false)
   const [activityForm, setActivityForm] = useState({ icon: '', name: '', estPrice: '', description: '' })
@@ -100,6 +102,20 @@ export default function AdminTab() {
     } catch { toast.error('Failed') }
   }
 
+  async function savePayment(userId: string) {
+    const raw = paymentInputs[userId]
+    if (raw === undefined || raw === '') { toast.error('Enter an amount'); return }
+    const amount = parseFloat(raw)
+    if (isNaN(amount) || amount < 0) { toast.error('Invalid amount'); return }
+    setSavingPaymentId(userId)
+    try {
+      await api.patch(`/admin/users/${userId}/payment`, { amount })
+      toast.success('Payment updated — they\'ve been notified')
+      loadData()
+    } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed') }
+    finally { setSavingPaymentId(null) }
+  }
+
   async function seedDefaults() {
     try {
       await api.post('/admin/seed', {})
@@ -163,6 +179,7 @@ export default function AdminTab() {
             return pending > 0 ? `Activities (${pending})` : 'Activities'
           })()],
           ['expenses', 'Expenses'],
+          ['payments', 'Payments'],
           ['announce', 'Announce'],
         ] as const).map(([s, label]) => (
           <button key={s} onClick={() => setSection(s)}
@@ -293,12 +310,9 @@ export default function AdminTab() {
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs font-semibold text-dark">Settlement</p>
-                <div className="flex items-center gap-1">
-                  <span className="text-xs text-muted">Pool $</span>
-                  <input value={poolInput} onChange={e => setPoolInput(e.target.value)}
-                    className="w-14 text-xs border border-gray-200 rounded-lg px-1.5 py-1 text-dark focus:outline-none focus:ring-1 focus:ring-primary" />
-                  <button onClick={updatePool} className="text-xs text-primary font-semibold ml-1">Save</button>
-                </div>
+                <button onClick={() => setSection('payments')} className="text-xs text-primary font-semibold">
+                  Edit payments
+                </button>
               </div>
               <div className="space-y-1.5">
                 {billing.map(b => (
@@ -527,6 +541,61 @@ export default function AdminTab() {
             <button onClick={addExpense} className="w-full py-2.5 bg-primary text-white rounded-xl font-semibold text-sm">
               Add &amp; Split
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── PAYMENTS ── */}
+      {section === 'payments' && (
+        <div className="space-y-4">
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <p className="text-xs font-semibold text-dark mb-1">Trip default</p>
+            <p className="text-[11px] text-muted mb-3">Everyone pays this unless overridden below</p>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted">$</span>
+              <input value={poolInput} onChange={e => setPoolInput(e.target.value)}
+                className="w-20 text-sm border border-gray-200 rounded-lg px-2 py-1 text-dark focus:outline-none focus:ring-1 focus:ring-primary" />
+              <button onClick={updatePool} className="text-xs text-primary font-semibold ml-1">Save</button>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <p className="text-xs font-semibold text-dark mb-3">Crew payments ({billing.length})</p>
+            {billing.length === 0
+              ? <p className="text-xs text-muted">No one has joined yet.</p>
+              : <div className="space-y-3">
+                {billing.map(b => {
+                  const isOverridden = b.paymentAmount !== null && b.paymentAmount !== undefined
+                  return (
+                    <div key={b.id} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary shrink-0">
+                        {(b.name || b.email)[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-dark truncate">{b.name || b.email}</p>
+                        <p className="text-[11px] text-muted">
+                          Paying ${b.poolPerPerson.toFixed(2)}
+                          {isOverridden && <span className="text-accent ml-1">(custom)</span>}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-sm text-muted">$</span>
+                        <input
+                          value={paymentInputs[b.id] ?? String(b.poolPerPerson)}
+                          onChange={e => setPaymentInputs(f => ({ ...f, [b.id]: e.target.value }))}
+                          className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1 text-dark focus:outline-none focus:ring-1 focus:ring-primary" />
+                        <button
+                          disabled={savingPaymentId === b.id}
+                          onClick={() => savePayment(b.id)}
+                          className="text-xs text-primary font-semibold disabled:opacity-50">
+                          {savingPaymentId === b.id ? '…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            }
           </div>
         </div>
       )}

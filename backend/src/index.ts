@@ -287,6 +287,47 @@ app.patch('/config', authMiddleware, adminOnly, async (req: AuthRequest, res: an
   res.json(config)
 })
 
+// Admin override of a single user's payment amount (default stays $100 for everyone else)
+app.patch('/admin/users/:id/payment', authMiddleware, adminOnly, async (req: AuthRequest, res: any) => {
+  const { amount } = req.body
+  if (amount === undefined || isNaN(Number(amount)) || Number(amount) < 0) {
+    return res.status(400).json({ error: 'valid amount required' })
+  }
+  const user = await prisma.user.findUnique({ where: { id: req.params.id } })
+  if (!user) return res.status(404).json({ error: 'User not found' })
+  const config = await prisma.tripConfig.findFirst()
+  const oldAmount = user.paymentAmount ?? config?.poolPerPerson ?? 100
+  const newAmount = Number(amount)
+  const updated = await prisma.user.update({ where: { id: user.id }, data: { paymentAmount: newAmount } })
+
+  if (newAmount !== oldAmount) {
+    const title = 'Payment amount updated'
+    const body = `Your trip payment changed from $${oldAmount.toFixed(2)} to $${newAmount.toFixed(2)}`
+    await prisma.notification.create({ data: { userId: user.id, title, body } })
+    await sendEmail(user.email, `🐸 Your trip payment changed to $${newAmount.toFixed(2)}`,
+      `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+        <div style="background:#1F6F4A;padding:36px;text-align:center">
+          <div style="font-size:48px;margin-bottom:8px">🐸</div>
+          <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0">Payment updated</h1>
+        </div>
+        <div style="padding:28px 32px">
+          <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 8px">Hey ${user.name || user.email.split('@')[0]}!</p>
+          <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px">An admin updated your trip payment amount.</p>
+          <div style="background:#F0FDF4;border-left:4px solid #1F6F4A;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px">
+            <p style="color:#1F6F4A;font-weight:700;margin:0">$${oldAmount.toFixed(2)} &rarr; $${newAmount.toFixed(2)}</p>
+          </div>
+          <p style="color:#6B7280;font-size:13px;line-height:1.6;margin:0">Check the app to see your updated wallet balance.</p>
+        </div>
+        <div style="background:#F9FAFB;padding:16px 32px;text-align:center;border-top:1px solid #E5E7EB">
+          <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+        </div>
+      </div>`)
+    io.emit('billing:update', {})
+    io.emit('notification:new', { title, body })
+  }
+  res.json({ ok: true, paymentAmount: updated.paymentAmount })
+})
+
 // ─── ITINERARY ─────────────────────────────────────────────────────────────
 
 app.get('/itinerary', authMiddleware, async (_req: AuthRequest, res: any) => {
@@ -550,6 +591,25 @@ app.post('/expenses', authMiddleware, adminOnly, async (req: AuthRequest, res: a
   if (targetIds.length > 0) {
     await prisma.expenseSplit.createMany({ data: targetIds.map(uid => ({ expenseId: expense.id, userId: uid, share })) })
     for (const uid of targetIds) await prisma.notification.create({ data: { userId: uid, title: `New expense: ${name}`, body: `Your share: $${share.toFixed(2)}` } })
+    const targetUsers = await prisma.user.findMany({ where: { id: { in: targetIds } }, select: { email: true, name: true } })
+    await sendBulkEmail(targetUsers, `🐸 $${Number(amount).toFixed(2)} added — ${name}`,
+      (u) => `<div style="font-family:'Helvetica Neue',sans-serif;max-width:480px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.1)">
+        <div style="background:#1F6F4A;padding:36px;text-align:center">
+          <div style="font-size:48px;margin-bottom:8px">🐸</div>
+          <h1 style="color:#fff;font-size:22px;font-weight:800;margin:0">New expense added</h1>
+        </div>
+        <div style="padding:28px 32px">
+          <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 8px">Hey ${u.name || u.email.split('@')[0]}!</p>
+          <p style="color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px">$${Number(amount).toFixed(2)} was added for <strong>${name}</strong> — category <strong>${category}</strong>.</p>
+          <div style="background:#F0FDF4;border-left:4px solid #1F6F4A;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:16px">
+            <p style="color:#1F6F4A;font-weight:700;margin:0">Your share: $${share.toFixed(2)}</p>
+          </div>
+          <p style="color:#6B7280;font-size:13px;line-height:1.6;margin:0">Check the app to see your updated wallet balance.</p>
+        </div>
+        <div style="background:#F9FAFB;padding:16px 32px;text-align:center;border-top:1px solid #E5E7EB">
+          <div style="color:#9CA3AF;font-size:12px">Grazuasion Party · June 16–18, 2026 · Bullfrog Lake, IL</div>
+        </div>
+      </div>`)
   }
   io.emit('expense:new', { name, share })
   res.json({ ...expense, splitCount: targetIds.length, share })
@@ -598,38 +658,46 @@ app.patch('/billing/split/:splitId', authMiddleware, adminOnly, async (req: Auth
 
 app.get('/billing/me', authMiddleware, async (req: AuthRequest, res: any) => {
   const userId = req.user?.sub
-  const splits = await prisma.expenseSplit.findMany({
-    where: { userId },
-    include: { expense: { select: { name: true, category: true, createdAt: true } } }
-  })
+  const [user, splits, config, participations] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { paymentAmount: true } }),
+    prisma.expenseSplit.findMany({
+      where: { userId },
+      include: { expense: { select: { name: true, category: true, createdAt: true } } }
+    }),
+    prisma.tripConfig.findFirst(),
+    prisma.participation.findMany({
+      where: { userId, status: 'APPROVED', activity: { isDone: false } },
+      include: { activity: { select: { id: true, name: true, estPrice: true, icon: true } } }
+    }),
+  ])
   const total = splits.reduce((sum, s) => sum + s.share, 0)
-  const config = await prisma.tripConfig.findFirst()
-  const participations = await prisma.participation.findMany({
-    where: { userId, status: 'APPROVED', activity: { isDone: false } },
-    include: { activity: { select: { id: true, name: true, estPrice: true, icon: true } } }
-  })
   const pendingActivityCost = participations.reduce((sum, p) => sum + p.activity.estPrice * p.count, 0)
   res.json({
     total: +total.toFixed(2),
     splits,
-    poolPerPerson: config?.poolPerPerson ?? 100,
+    poolPerPerson: user?.paymentAmount ?? config?.poolPerPerson ?? 100,
     pendingActivities: participations.map(p => ({ ...p.activity, count: p.count, subtotal: p.activity.estPrice * p.count })),
     pendingActivityCost: +pendingActivityCost.toFixed(2)
   })
 })
 
 app.get('/billing/all', authMiddleware, adminOnly, async (_req: AuthRequest, res: any) => {
-  const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, name: true, email: true } })
+  const users = await prisma.user.findMany({ where: { onboarded: true }, select: { id: true, name: true, email: true, paymentAmount: true } })
   const splits = await prisma.expenseSplit.findMany()
   const config = await prisma.tripConfig.findFirst()
+  const defaultAmount = config?.poolPerPerson ?? 100
   const totals: Record<string, number> = {}
   for (const s of splits) totals[s.userId] = (totals[s.userId] || 0) + s.share
-  res.json(users.map(u => ({
-    ...u,
-    totalCharged: +(totals[u.id] || 0).toFixed(2),
-    poolPerPerson: config?.poolPerPerson || 0,
-    balance: +((config?.poolPerPerson || 0) - (totals[u.id] || 0)).toFixed(2)
-  })))
+  res.json(users.map(u => {
+    const poolPerPerson = u.paymentAmount ?? defaultAmount
+    return {
+      ...u,
+      defaultAmount,
+      totalCharged: +(totals[u.id] || 0).toFixed(2),
+      poolPerPerson,
+      balance: +(poolPerPerson - (totals[u.id] || 0)).toFixed(2)
+    }
+  }))
 })
 
 // ─── MESSAGES ──────────────────────────────────────────────────────────────
